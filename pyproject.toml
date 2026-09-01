@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "landloom"
-version = "0.1.0"
+version = "1.0.0"
 description = "Weave a complete fantasy region — map, rivers, towns, names, and a printable atlas — from a single seed phrase. Offline, deterministic, zero dependencies."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,9 @@ classifiers = [
     "Topic :: Games/Entertainment :: Role-Playing",
     "Topic :: Multimedia :: Graphics",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Lechemilk33/3rd-time-"
 
 [project.scripts]
 landloom = "landloom.cli:main"
