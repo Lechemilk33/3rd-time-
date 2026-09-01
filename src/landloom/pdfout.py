@@ -18,24 +18,39 @@ FONTS = list(WIDTHS.keys())
 
 
 def measure(text, font, size):
-    """Width of a string in points."""
+    """Width of a string in points (WinAnsi codepage)."""
     table = WIDTHS[font]
     total = 0
     for ch in text:
-        o = ord(ch)
-        total += table[o - 32] if 32 <= o <= 126 else 600
+        try:
+            code = ch.encode("cp1252")[0]
+        except UnicodeEncodeError:
+            code = ord("?")
+        if 32 <= code <= 255:
+            w = table[code - 32]
+            total += w if w else 500
+        else:
+            total += 500
     return total * size / 1000.0
 
 
 def _esc(text):
+    """Encode a string for a PDF literal in WinAnsi with escapes."""
     out = []
     for ch in text:
+        try:
+            code = ch.encode("cp1252")[0]
+        except UnicodeEncodeError:
+            out.append("?")
+            continue
         if ch in "()\\":
             out.append("\\" + ch)
-        elif 32 <= ord(ch) <= 126:
+        elif 32 <= code <= 126:
             out.append(ch)
+        elif code >= 32:
+            out.append(f"\\{code:03o}")
         else:
-            out.append("?")  # names are kept to ASCII upstream
+            out.append(" ")
     return "".join(out)
 
 

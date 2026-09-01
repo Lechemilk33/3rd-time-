@@ -36,13 +36,14 @@ def cell_color(world, i):
     biome = world.biomes[i] if world.biomes else None
     base = _BIOME_RGB.get(biome, (150, 150, 120))
     rel = (h - t.sea_level) / max(1e-9, 1.0 - t.sea_level)
-    shade = 0.75 + 0.5 * rel
+    shade = 0.8 + 0.35 * rel
     # slope-based hillshading, light from the northwest
     W = t.grid.W
     j = i - W - 1
     if j >= 0:
         dh = t.heights[j] - h
-        shade += dh * 26.0
+        shade += dh * 18.0
+    shade = max(0.55, min(1.25, shade))
     return _shade(base, shade)
 
 
