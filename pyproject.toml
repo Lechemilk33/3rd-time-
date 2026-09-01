@@ -1,30 +1,23 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "landloom"
+name = "umbra-turntable"
 version = "1.0.0"
-description = "Weave a complete fantasy region — map, rivers, towns, names, and a printable atlas — from a single seed phrase. Offline, deterministic, zero dependencies."
+description = "Two words, one solid: a shadow sculpture that turns in your terminal."
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "Landloom" }]
-keywords = ["map", "fantasy", "procedural", "ttrpg", "pdf", "worldbuilding", "generator"]
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+dependencies = []
 classifiers = [
     "Environment :: Console",
-    "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Topic :: Games/Entertainment :: Role-Playing",
-    "Topic :: Multimedia :: Graphics",
+    "Topic :: Artistic Software",
 ]
 
-[project.urls]
-Homepage = "https://github.com/Lechemilk33/3rd-time-"
-
 [project.scripts]
-landloom = "landloom.cli:main"
+umbra = "umbra.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["umbra"]

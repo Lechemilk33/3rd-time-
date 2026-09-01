@@ -1,118 +1,100 @@
-# Landloom
+# umbra
 
-**Weave a world from a phrase.**
+Two words. One solid. Turn it a quarter turn and it stops being the first
+word and starts being the second.
 
-Landloom is a command-line world generator for game masters, writers, and
-anyone who needs a fantasy region that holds together. You give it a seed
-phrase; it gives you back a print-ready PDF atlas — a full-page antique-style
-map, followed by a typeset gazetteer of every city, river, forest, and rumor
-on it. The same phrase always weaves the same world, on any machine, so a
-phrase *is* a world: share it in a campaign notes doc, a forum post, or a
-book dedication, and anyone can pull up your exact map.
+    python3 -m umbra HELLO WORLD
 
-![The Salt Reaches — a generated atlas map](docs/salt-reaches-map.png)
-
-Everything on that page was decided by simulation, not decoration. Rivers
-run downhill because rainfall was routed over eroded terrain. The desert
-sits behind the mountains because the prevailing wind dropped its moisture
-climbing them. The biggest city is a port at a river mouth because that is
-where trade would actually pool. And every name has an etymology the
-gazetteer can quote, in a language invented for that world alone.
-
-## Install
-
-With [uv](https://docs.astral.sh/uv/) (or `pipx`, same shape):
+It runs in your terminal. It needs Python 3.8 or newer and nothing else --
+no packages to install, no network, no account, no key.
 
 ```
-uv tool install "git+https://github.com/Lechemilk33/3rd-time-.git@claude/overnight-build-bpevb2"
+           %%     %% %%%%%%%%%  #         ##          #####
+           ##     ** *********  *         **          *****
+           ##     ** **         *         **        ##     ##
+           ##     ** **         *         **        **     ++
+           ##     ** **         *         **        **     ++
+           **%%%%%** **%%%%#    *         **        **     ++
+           ********* *******    *         **        **     ++
+           **     ** **         *         **        **     ++
+           **     ** **         *         **        **     ++
+           **     ** **         *         **        **     ++
+           **     ** **#######  *#######  **#######   #####
+           **     ** *********  ********  *********   +++++
 ```
 
-or with plain pip:
+and a quarter turn later, the very same object:
 
 ```
-pip install "git+https://github.com/Lechemilk33/3rd-time-.git@claude/overnight-build-bpevb2"
+           %%     %%   %%%%%    #######   ##        #######
+           ##     **   *****    *******   **        *******
+           ##     ** %%     %%  *      #  **        **     ##
+           ##     ** **     **  *      *  **        **     ++
+           ##     ** **     **  *      *  **        **     ++
+           **     ** **     **  *######   **        **     ++
+           **     ** **     **  *******   **        **     ++
+           **  %  ** **     **  *  **     **        **     ++
+           **  *  ** **     **  *  **     **        **     ++
+           **%% %%** **     **  *    ##   **        **     ++
+           ==     ==   #####    -      #  --####### --#####
+           **     **   *****    *      *  ********* +++++++
 ```
 
-Python 3.10+ and nothing else — Landloom has **zero dependencies**, right
-down to writing its PDFs byte by byte.
+Nothing was swapped out between those two pictures. It is one lump of
+material, photographed twice, from two directions ninety degrees apart.
 
-## Use
+## What you're looking at
 
-```
-landloom "The Salt Reaches"
-```
+Take the word HELLO and push it through space like a cookie cutter, so it
+becomes an endless prism with letters for a cross-section. Do the same to
+WORLD, at right angles to the first. Now keep only the material that both
+prisms claim, and throw the rest away.
 
-That writes `the-salt-reaches.pdf`: the map sheet plus a gazetteer. Other
-things it can do:
+What's left is one lump. Its outline head-on is HELLO. Its outline from the
+side is WORLD. Not roughly, not nearly -- exactly, to the pixel, with nothing
+fudged and nothing hidden round the back.
 
-```
-landloom "emberfall" --paper poster        # 22x17" sheet for real printing
-landloom "gloamwake" --shape isles         # force a landform: continent,
-                                           #   coast, isles, or highlands
-landloom "winterdeep" --hex 6              # hexcrawl overlay, 6 mi/hex
-landloom "quiet harbor" --preview          # ANSI map in your terminal
-landloom "salt march" --json world.json    # the raw data, for your own tools
-landloom                                   # no phrase: weaves a random one
-landloom --help                            # everything else
-```
+It turns on its own, resting a moment on each face. If you'd rather turn it
+yourself:
 
-Generation takes a few seconds. A phrase is normalized before use
-(`"Emberfall "` and `"emberfall"` are the same world), and anything is a
-valid phrase — names, sentences, dates, in-jokes.
+    <- ->    turn it
+    space    hold it still
+    q        done
 
-## What the atlas contains
+## What you can carve
 
-- **The map sheet** — shaded relief, coastlines with waterlines, rivers that
-  widen as tributaries join them, lakes, biome washes from glacier to
-  rainforest, mountain/forest/marsh glyphs, province borders and tints,
-  roads with bridges, sea lanes between ports, settlement symbols ranked
-  city/town/village, a compass, a scale bar in miles, and a title cartouche.
-- **The gazetteer** — every settlement with population, trade goods, its
-  province, and a rumor a game master can run with; every named river with
-  its source and measured length; the wild country (ranges, forests, fens,
-  wastes); and notes on the world's own language, so you can coin new names
-  that fit.
-- **Etymologies throughout** — names are compounds of generated roots
-  (`Aldmere — "old + lake"`), and the same root recurs across the map
-  wherever the land repeats itself.
+A to Z, 0 to 9, and ` ! ? & # $ / \ @ `, and space. Lowercase gets shouted
+at you. Quote anything with a space in it:
 
-## How it thinks
+    python3 -m umbra "GOOD NIGHT" "SLEEP WELL"
 
-Landloom is a pipeline of small simulations, each feeding the next:
-fractal terrain is carved by stream-power erosion; rainfall is blown
-across the result by a prevailing wind, losing moisture over high ground;
-rivers are traced from the drainage; settlements are scored on water,
-flatness, climate, and trade access; roads are routed over the terrain
-with a real pathfinder; provinces grow outward from their seats by travel
-cost; a phonology is generated and a lexicon derived from it; and finally
-the labels on the map are placed by simulated annealing, the way
-cartographers' software does it. Nothing is drawn by hand and nothing is
-looked up from a stock list — which is why the geography, the economy, and
-the names all agree with each other.
+The letters are drawn to a rule: no letter may have a gap running clean
+across it. A height of the letter with no ink in it would be a height of the
+sculpture with no material in it, and that empty slice would go missing from
+*both* words at once. So the exclamation mark wears its dot on its sleeve and
+the question mark's tail is joined on. They are being honest about the
+conditions.
 
-## Honest limits
+## Tests
 
-- Landloom makes **regions**, not planets, dungeons, or battle maps. One
-  phrase, one region, a few hundred miles across.
-- The prose is assembled from templates over real world data. It is
-  varied and grounded, but it is not a novelist; read it as a starting
-  point, not a finished setting bible.
-- The invented languages are naming languages — sound systems and word
-  roots — not full grammars you could speak.
-- Cultural texture beyond names (religions, politics, history) is
-  shallow: factions and rumors, not chronicles.
-- There is no editor. If you want to move a city, the tool is not for
-  that; weave another phrase instead — they are free.
+    python3 -m unittest discover -s tests -t .
 
-## Examples
+They read the picture back out of the terminal, colour code by colour code,
+and insist that it spells the word.
 
-Pre-woven atlases live in [`examples/`](examples/):
-[The Salt Reaches](examples/the-salt-reaches.pdf) (a continent),
-[winterdeep](examples/winterdeep.pdf) (a highland lake country),
-[gloamwake](examples/gloamwake.pdf) (isles).
+## One last thing
 
-![A generated gazetteer page](docs/salt-reaches-gazetteer.png)
+The lump is usually not one lump.
 
-## License
+The carve keeps every single scrap of material the two shadows permit -- and
+there is nothing left to add, because any other scrap would light a pixel in
+one of the shadows that the words never asked for. Even so, what you end up
+holding is a few dozen chunks floating in mid-air with nothing between them.
+HELLO and WORLD comes to ninety-seven separate pieces.
 
-MIT. The atlases you generate are yours.
+You could not build it out of wood. It stands up only because it is made of
+light.
+
+## Licence
+
+MIT.
