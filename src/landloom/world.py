@@ -1,7 +1,8 @@
 """World assembly: the full pipeline from phrase to populated region."""
 
 from . import climate as climate_mod
-from . import culture, hydrology, roads as roads_mod, terrain as terrain_mod
+from . import culture, hydrology, lore as lore_mod, naming
+from . import roads as roads_mod, terrain as terrain_mod
 from .rng import Streams, normalize_phrase
 
 __all__ = ["World", "weave"]
@@ -62,10 +63,14 @@ def weave(phrase, width=260, height=200, archetype=None, land_target=None,
         w.roads, w.road_cells, w.bridges = roads_mod.build_roads(
             t, c, w.settlements, w.river_cells)
         w.sea_lanes = roads_mod.build_sea_lanes(t, w.settlements, w.roads)
+        naming.name_world(streams, w)
+        lore_mod.build_lore(streams, w)
     else:
         w.settlements = []
         w.province = [-1] * t.grid.n
         w.seats = []
         w.roads, w.road_cells, w.bridges = [], set(), []
         w.sea_lanes = []
+        w.features = []
+        w.province_names = {}
     return w

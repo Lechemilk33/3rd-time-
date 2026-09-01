@@ -150,7 +150,7 @@ def _classify(grid, t, c):
             biomes[i] = "glacier"
         elif tt < 0.24:
             biomes[i] = "tundra"
-        elif rel < 0.07 and m > 0.6 and tt > 0.3:
+        elif rel < 0.05 and m > 0.68 and tt > 0.3:
             biomes[i] = "marsh"
         elif tt < 0.46:
             biomes[i] = "taiga" if m > 0.32 else "shrubland"
