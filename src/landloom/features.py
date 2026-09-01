@@ -90,12 +90,11 @@ def detect_features(world):
     oceans.sort(key=len, reverse=True)
     if oceans and len(oceans[0]) >= _MIN_SIZE["sea"]:
         f = Feature("sea", oceans[0], grid)
-        # anchor the sea label out in open water: the ocean cell
-        # farthest from any land
-        best, bestd = None, -1.0
+        # anchor the sea label in open water: rank ocean cells by
+        # distance from any coast and keep several well-separated
+        # candidates, so the label can dodge map furniture
         W = grid.W
         step = max(1, len(oceans[0]) // 900)
-        land_pts = [(p.x, p.y) for p in world.settlements] or [(grid.W / 2, grid.H / 2)]
         coast = []
         for i in range(grid.n):
             if not t.ocean[i]:
@@ -105,14 +104,24 @@ def detect_features(world):
                     coast.append((i % W, i // W))
                     break
         coast = coast[::max(1, len(coast) // 250)] or [(0, 0)]
+        scored = []
         for i in oceans[0][::step]:
             x, y = i % W, i // W
             d = min((x - cx) ** 2 + (y - cy) ** 2 for cx, cy in coast)
-            if d > bestd:
-                bestd, best = d, (x, y)
-        if best:
-            f.cx, f.cy = best
+            scored.append((d, x, y))
+        scored.sort(reverse=True)
+        anchors = []
+        min_sep2 = (min(grid.W, grid.H) / 4.5) ** 2
+        for d, x, y in scored:
+            if all((x - ax) ** 2 + (y - ay) ** 2 > min_sep2
+                   for ax, ay in anchors):
+                anchors.append((x, y))
+            if len(anchors) >= 4:
+                break
+        if anchors:
+            f.cx, f.cy = anchors[0]
             f.angle = 0.0
+        f.anchors = anchors
         feats.append(f)
 
     feats.sort(key=lambda f: -f.size)

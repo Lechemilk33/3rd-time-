@@ -220,7 +220,8 @@ class PDF:
         for name, (w, h, data) in self.images.items():
             body = (f"<< /Type /XObject /Subtype /Image /Width {w} "
                     f"/Height {h} /ColorSpace /DeviceRGB "
-                    f"/BitsPerComponent 8 /Filter /FlateDecode "
+                    f"/BitsPerComponent 8 /Interpolate true "
+                    f"/Filter /FlateDecode "
                     f"/Length {len(data)} >>\nstream\n").encode() \
                 + data + b"\nendstream"
             image_ids[name] = add(body)

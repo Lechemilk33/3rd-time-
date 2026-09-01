@@ -72,6 +72,9 @@ class MapRenderer:
         self.map_h = self.gh * self.s
         self.mx0 = (self.pw - self.map_w) / 2
         self.my0 = (self.ph - self.map_h) / 2
+        # everything sized in points scales with the cell size, so a
+        # poster sheet keeps the same visual proportions as letter
+        self.k = self.s / 2.815
         self.rng = None  # set at render time from world streams
 
     # grid -> page (grid y grows downward, PDF y grows upward)
@@ -125,21 +128,22 @@ class MapRenderer:
         order = self._corner_openness()
         # compass in the most open corner, cartouche in the next
         corner = order[0]
-        pad = 40.0
+        pad = 40.0 * self.k
         self._compass_xy = (
             self.mx0 + (pad if "w" in corner else self.map_w - pad),
             self.my0 + (self.map_h - pad if "n" in corner else pad))
 
         w = self.world
+        K = self.k
         title = _titlecase(w.phrase)
         sub = f"being a survey of the region called {w.endonym}"
-        t_size = 15.0
-        while measure(title, "Times-Bold", t_size) > 210 and t_size > 9:
+        t_size = 15.0 * K
+        while measure(title, "Times-Bold", t_size) > 210 * K and t_size > 9 * K:
             t_size -= 0.5
         tw = max(measure(title, "Times-Bold", t_size),
-                 measure(sub, "Times-Italic", 7.5)) + 30
-        th = 52.0
-        pad = 16.0
+                 measure(sub, "Times-Italic", 7.5 * K)) + 30 * K
+        th = 52.0 * K
+        pad = 16.0 * K
         c2 = order[1] if len(order) > 1 else "ne"
         self._cart_rect = (
             self.mx0 + (pad if "w" in c2 else self.map_w - pad - tw),
@@ -153,8 +157,8 @@ class MapRenderer:
             if cand * pts_per_mile < self.map_w * 0.22:
                 span = cand
         self._scale_span = span
-        self._scale_rect = (self.mx0 + 14, self.my0 + 12,
-                            span * pts_per_mile, 16.0)
+        self._scale_rect = (self.mx0 + 14 * K, self.my0 + 12 * K,
+                            span * pts_per_mile, 16.0 * K)
 
     def _furniture_obstacles(self):
         obs = []
@@ -173,7 +177,7 @@ class MapRenderer:
         w = self.world
         t = w.terrain
         W, H = self.gw, self.gh
-        R = 2
+        R = 3 if self.pw > 1000 else 2  # denser underlay for poster sheets
         seed = 1234567
 
         # smoothed heights for shading
@@ -278,7 +282,8 @@ class MapRenderer:
         page.clip(even_odd=True)
         page.set_stroke(*WATER_INK)
         page.set_join(1)
-        for width, a in ((2.4, 0.16), (5.2, 0.085), (8.6, 0.045)):
+        for width, a in ((2.4 * self.k, 0.16), (5.2 * self.k, 0.085),
+                         (8.6 * self.k, 0.045)):
             page.alpha(a)
             page.set_width(width)
             for lp in coast_loops:
@@ -288,7 +293,7 @@ class MapRenderer:
 
     def _coastline(self, page, coast_loops):
         page.set_stroke(*INK)
-        page.set_width(0.75)
+        page.set_width(0.75 * self.k)
         page.set_join(1)
         for lp in coast_loops:
             self._trace_loop(page, lp)
@@ -314,7 +319,7 @@ class MapRenderer:
                 page.fill()
                 page.restore()
                 page.set_stroke(*WATER_INK)
-                page.set_width(0.55)
+                page.set_width(0.55 * self.k)
                 page.polyline(pts, closed=True)
                 page.stroke()
 
@@ -326,21 +331,48 @@ class MapRenderer:
         max_flux = max((max(seg["flux"]) for seg in self.world.rivers),
                        default=1.0)
         for seg in self.world.rivers:
-            raw_pts = seg["points"]
-            sm = chaikin_open(raw_pts, 2)
-            # map smooth index back to flux index
-            ratio = (len(raw_pts) - 1) / max(1, len(sm) - 1)
-            pts = [self.pt(p) for p in sm]
-            k = 0
-            chunk = 6
-            while k < len(pts) - 1:
-                j = min(k + chunk, len(pts) - 1)
-                f = seg["flux"][min(int(k * ratio), len(seg["flux"]) - 1)]
-                width = 0.35 + 1.5 * math.sqrt(f / max_flux)
-                page.set_width(width * (self.s / 2.8))
-                page.polyline(pts[k:j + 1])
-                page.stroke()
-                k = j
+            for raw_pts, fluxes in self._river_runs(seg):
+                self._stroke_river(page, raw_pts, fluxes, max_flux)
+
+    def _river_runs(self, seg):
+        """Split a river at lakes: the channel vanishes under the water
+        and re-emerges at the outflow instead of beelining across."""
+        t = self.world.terrain
+        W = self.gw
+        runs = []
+        cur_p, cur_f = [], []
+        for k, (x, y) in enumerate(seg["points"]):
+            f = seg["flux"][min(k, len(seg["flux"]) - 1)]
+            in_lake = t.lake_id[y * W + x] >= 0
+            if in_lake:
+                if cur_p:
+                    cur_p.append((x, y))  # reach one point into the lake
+                    cur_f.append(f)
+                    if len(cur_p) >= 2:
+                        runs.append((cur_p, cur_f))
+                    cur_p, cur_f = [], []
+            else:
+                cur_p.append((x, y))
+                cur_f.append(f)
+        if len(cur_p) >= 2:
+            runs.append((cur_p, cur_f))
+        return runs
+
+    def _stroke_river(self, page, raw_pts, fluxes, max_flux):
+        sm = chaikin_open(raw_pts, 2)
+        # map smooth index back to flux index
+        ratio = (len(raw_pts) - 1) / max(1, len(sm) - 1)
+        pts = [self.pt(p) for p in sm]
+        k = 0
+        chunk = 6
+        while k < len(pts) - 1:
+            j = min(k + chunk, len(pts) - 1)
+            f = fluxes[min(int(k * ratio), len(fluxes) - 1)]
+            width = 0.35 + 1.5 * math.sqrt(f / max_flux)
+            page.set_width(width * (self.s / 2.8))
+            page.polyline(pts[k:j + 1])
+            page.stroke()
+            k = j
 
     # ------------------------------------------------------------------
     def _province_borders(self, page):
@@ -370,8 +402,8 @@ class MapRenderer:
         page.save()
         page.alpha(0.6)
         page.set_stroke(*BORDER)
-        page.set_width(0.85)
-        page.set_dash([2.6, 1.9])
+        page.set_width(0.85 * self.k)
+        page.set_dash([2.6 * self.k, 1.9 * self.k])
         page.set_cap(1)
         for ch in chains:
             sm = chaikin_open(ch, 2)
@@ -382,8 +414,8 @@ class MapRenderer:
     def _roads(self, page):
         page.save()
         page.set_stroke(*ROAD)
-        page.set_width(0.8)
-        page.set_dash([2.8, 1.8])
+        page.set_width(0.8 * self.k)
+        page.set_dash([2.8 * self.k, 1.8 * self.k])
         page.set_cap(1)
         page.set_join(1)
         for poly in self.world.roads:
@@ -396,8 +428,8 @@ class MapRenderer:
         page.save()
         page.alpha(0.7)
         page.set_stroke(*WATER_INK)
-        page.set_width(1.0)
-        page.set_dash([0.1, 3.2])
+        page.set_width(1.0 * self.k)
+        page.set_dash([0.1, 3.2 * self.k])
         page.set_cap(1)
         for lane in self.world.sea_lanes:
             sm = chaikin_open(lane["points"], 3)
@@ -414,9 +446,9 @@ class MapRenderer:
             ca, sa = math.cos(ang), math.sin(ang)
             cx, cy = self.px(bx), self.py(by)
             L = self.s * 0.9
-            for off in (-1.1, 1.1):
+            for off in (-1.1 * self.k, 1.1 * self.k):
                 ox, oy = -sa * off, ca * off
-                page.set_width(0.7)
+                page.set_width(0.7 * self.k)
                 page.move_to(cx - ca * L + ox, cy - sa * L + oy)
                 page.line_to(cx + ca * L + ox, cy + sa * L + oy)
                 page.stroke()
@@ -597,46 +629,47 @@ class MapRenderer:
         seats = set(id(p) for p in self.world.seats)
         for p in sorted(self.world.settlements, key=lambda q: q.y):
             cx, cy = self.px(p.x), self.py(p.y)
+            k = self.k
             if p.kind == "city":
-                r = 3.2
+                r = 3.2 * k
                 page.set_fill(*PARCHMENT)
                 _circle(page, cx, cy, r)
                 page.fill()
                 page.set_stroke(*INK)
-                page.set_width(0.9)
+                page.set_width(0.9 * k)
                 _circle(page, cx, cy, r)
                 page.stroke()
                 page.set_fill(*INK)
                 _circle(page, cx, cy, r * 0.45)
                 page.fill()
             elif p.kind == "town":
-                r = 2.2
+                r = 2.2 * k
                 page.set_fill(*INK)
                 _circle(page, cx, cy, r)
                 page.fill()
                 page.set_stroke(*PARCHMENT)
-                page.set_width(0.5)
+                page.set_width(0.5 * k)
                 _circle(page, cx, cy, r * 0.55)
                 page.stroke()
             else:
-                r = 1.5
+                r = 1.5 * k
                 page.set_fill(*PARCHMENT)
                 _circle(page, cx, cy, r)
                 page.fill()
                 page.set_stroke(*INK)
-                page.set_width(0.7)
+                page.set_width(0.7 * k)
                 _circle(page, cx, cy, r)
                 page.stroke()
             if id(p) in seats:
                 page.set_stroke(*INK)
-                page.set_width(0.6)
-                page.move_to(cx, cy + r + 0.7)
-                page.line_to(cx, cy + r + 3.6)
+                page.set_width(0.6 * k)
+                page.move_to(cx, cy + r + 0.7 * k)
+                page.line_to(cx, cy + r + 3.6 * k)
                 page.stroke()
                 page.set_fill(*_mix(INK, (0.6, 0.15, 0.1), 0.5))
-                page.move_to(cx, cy + r + 3.6)
-                page.line_to(cx + 2.6, cy + r + 2.8)
-                page.line_to(cx, cy + r + 2.0)
+                page.move_to(cx, cy + r + 3.6 * k)
+                page.line_to(cx + 2.6 * k, cy + r + 2.8 * k)
+                page.line_to(cx, cy + r + 2.0 * k)
                 page.close()
                 page.fill()
 
@@ -644,12 +677,13 @@ class MapRenderer:
     def _build_labels(self):
         w = self.world
         items = []
+        K = self.k
         for p in w.settlements:
-            size = {"city": 9.2, "town": 7.8, "village": 6.6}[p.kind]
+            size = {"city": 9.2, "town": 7.8, "village": 6.6}[p.kind] * K
             font = "Times-Bold" if p.kind == "city" else "Times-Roman"
-            r = {"city": 4.6, "town": 3.6, "village": 3.0}[p.kind]
+            r = {"city": 4.6, "town": 3.6, "village": 3.0}[p.kind] * K
             cx, cy = self.px(p.x), self.py(p.y)
-            gap = r + 2.0
+            gap = r + 2.0 * K
             cands = [
                 (cx + gap, cy - size * 0.32, 0.0, "left"),
                 (cx - gap, cy - size * 0.32, 0.0, "right"),
@@ -683,9 +717,9 @@ class MapRenderer:
                 if ang < -math.pi / 2:
                     ang += math.pi
                 nx, ny = -math.sin(ang), math.cos(ang)
-                for side in (4.2, -4.2):
+                for side in (4.2 * K, -4.2 * K):
                     cands.append((x + nx * side, y + ny * side, ang, "center"))
-            items.append(LabelItem(seg["name"], "Times-Italic", 7.0, cands,
+            items.append(LabelItem(seg["name"], "Times-Italic", 7.0 * K, cands,
                                    kind="river", color=WATER_INK,
                                    priority=1.6, optional=True))
 
@@ -700,36 +734,38 @@ class MapRenderer:
                 ang += math.pi
             if f.kind == "sea":
                 # clamp the anchor so the label body stays in frame
-                tw2 = (measure(f.name, "Times-Italic", 13.5)
-                       + 2.2 * len(f.name)) / 2 + 10
+                tw2 = (measure(f.name, "Times-Italic", 13.5 * K)
+                       + 2.2 * K * len(f.name)) / 2 + 10
                 cx = min(max(cx, self.mx0 + tw2),
                          self.mx0 + self.map_w - tw2)
                 cy = min(max(cy, self.my0 + 22), self.my0 + self.map_h - 22)
                 cands = []
-                for (dx, dy) in ((0, 0), (0, 18), (0, -18), (55, 0),
-                                 (-55, 0), (40, 26), (-40, 26), (40, -26),
-                                 (-40, -26)):
-                    cands.append((min(max(cx + dx, self.mx0 + tw2),
-                                      self.mx0 + self.map_w - tw2),
-                                  min(max(cy + dy, self.my0 + 22),
-                                      self.my0 + self.map_h - 22),
-                                  0.0, "center"))
+                anchors = getattr(f, "anchors", None) or [(f.cx, f.cy)]
+                for (ax, ay) in anchors:
+                    px, py = self.px(ax), self.py(ay)
+                    for (dx, dy) in ((0, 0), (0, 18), (0, -18)):
+                        cands.append(
+                            (min(max(px + dx, self.mx0 + tw2),
+                                 self.mx0 + self.map_w - tw2),
+                             min(max(py + dy, self.my0 + 22),
+                                 self.my0 + self.map_h - 22),
+                             0.0, "center"))
                 items.append(LabelItem(
-                    f.name, "Times-Italic", 13.5, cands,
+                    f.name, "Times-Italic", 13.5 * K, cands,
                     kind="sea", color=_mix(WATER_INK, PARCHMENT, 0.25),
-                    charspace=2.2, priority=3.4))
+                    charspace=2.2 * K, priority=3.4))
             elif f.kind == "range":
-                size = min(10.5, 7.6 + f.size / 700.0)
+                size = min(10.5, 7.6 + f.size / 700.0) * K
                 items.append(LabelItem(
                     f.name.upper(), "Times-Roman", size,
                     [(cx, cy, ang, "center"),
                      (cx, cy + 10, ang, "center"),
                      (cx, cy - 10, ang, "center")],
                     kind="range", color=_mix(INK, PARCHMENT, 0.12),
-                    charspace=1.6, priority=2.4, optional=True))
+                    charspace=1.6 * K, priority=2.4, optional=True))
             elif f.kind == "forest":
                 items.append(LabelItem(
-                    f.name, "Times-Italic", 7.6,
+                    f.name, "Times-Italic", 7.6 * K,
                     [(cx, cy, ang * 0.5, "center"),
                      (cx, cy + 8, ang * 0.5, "center"),
                      (cx, cy - 8, ang * 0.5, "center")],
@@ -737,14 +773,14 @@ class MapRenderer:
                     priority=1.6, optional=True))
             elif f.kind in ("marsh", "desert"):
                 items.append(LabelItem(
-                    f.name, "Times-Italic", 7.2,
+                    f.name, "Times-Italic", 7.2 * K,
                     [(cx, cy, 0.0, "center"),
                      (cx, cy + 8, 0.0, "center")],
                     kind=f.kind, color=_mix(INK, PARCHMENT, 0.35),
                     priority=1.2, optional=True))
             elif f.kind == "lake":
                 items.append(LabelItem(
-                    f.name, "Times-Italic", 6.8,
+                    f.name, "Times-Italic", 6.8 * K,
                     [(cx, cy, 0.0, "center"),
                      (cx, cy - 9, 0.0, "center"),
                      (cx, cy + 9, 0.0, "center")],
@@ -766,14 +802,14 @@ class MapRenderer:
                 sx, sy, cnt = sums[k]
                 cx, cy = self.px(sx / cnt), self.py(sy / cnt)
                 items.append(LabelItem(
-                    name.upper(), "Times-Roman", 7.6,
+                    name.upper(), "Times-Roman", 7.6 * K,
                     [(cx, cy, 0.0, "center"),
                      (cx, cy + 12, 0.0, "center"),
                      (cx, cy - 12, 0.0, "center"),
                      (cx + 18, cy + 5, 0.0, "center"),
                      (cx - 18, cy - 5, 0.0, "center")],
                     kind="province", color=_mix(INK, PARCHMENT, 0.42),
-                    charspace=1.8, priority=1.0, optional=True))
+                    charspace=1.8 * K, priority=1.0, optional=True))
         return items
 
     def _draw_labels(self, page, items):
@@ -798,14 +834,15 @@ class MapRenderer:
 
     # ------------------------------------------------------------------
     def _neatline(self, page):
+        k = self.k
         page.set_stroke(*INK)
-        page.set_width(1.6)
-        page.rect(self.mx0 - 6, self.my0 - 6, self.map_w + 12,
-                  self.map_h + 12)
+        page.set_width(1.6 * k)
+        page.rect(self.mx0 - 6 * k, self.my0 - 6 * k, self.map_w + 12 * k,
+                  self.map_h + 12 * k)
         page.stroke()
-        page.set_width(0.6)
-        page.rect(self.mx0 - 2.5, self.my0 - 2.5, self.map_w + 5,
-                  self.map_h + 5)
+        page.set_width(0.6 * k)
+        page.rect(self.mx0 - 2.5 * k, self.my0 - 2.5 * k, self.map_w + 5 * k,
+                  self.map_h + 5 * k)
         page.stroke()
 
     def _corner_openness(self):
@@ -829,35 +866,37 @@ class MapRenderer:
 
     def _compass(self, page):
         x, y = self._compass_xy
-        r = 15.0
+        k = self.k
+        r = 15.0 * k
         page.save()
         page.alpha(0.9)
         page.set_stroke(*INK)
-        page.set_width(0.7)
+        page.set_width(0.7 * k)
         _circle(page, x, y, r)
         page.stroke()
         _circle(page, x, y, r * 0.55)
         page.stroke()
-        for k in range(8):
-            ang = k * math.pi / 4
+        for step in range(8):
+            ang = step * math.pi / 4
             ca, sa = math.cos(ang), math.sin(ang)
-            L = r if k % 2 == 0 else r * 0.55
-            if k == 2:  # north spike, drawn long below
+            L = r if step % 2 == 0 else r * 0.55
+            if step == 2:  # north spike, drawn long below
                 continue
-            page.set_width(0.8 if k % 2 == 0 else 0.5)
+            page.set_width((0.8 if step % 2 == 0 else 0.5) * self.k)
             page.move_to(x, y)
             page.line_to(x + ca * L, y + sa * L)
             page.stroke()
         # north spear
         page.set_fill(*INK)
-        page.move_to(x - 2.2, y)
+        page.move_to(x - 2.2 * k, y)
         page.line_to(x, y + r * 1.45)
-        page.line_to(x + 2.2, y)
+        page.line_to(x + 2.2 * k, y)
         page.close()
         page.fill()
         page.set_fill(*INK)
-        nw = measure("N", "Times-Bold", 9)
-        page.text(x - nw / 2, y + r * 1.55, "N", font="Times-Bold", size=9)
+        nw = measure("N", "Times-Bold", 9 * k)
+        page.text(x - nw / 2, y + r * 1.55, "N", font="Times-Bold",
+                  size=9 * k)
         page.restore()
 
     def _scale_bar(self, page):
@@ -866,35 +905,38 @@ class MapRenderer:
         span = self._scale_span
         bar_w = span * pts_per_mile
         x, y = self._scale_rect[0], self._scale_rect[1]
+        k = self.k
         page.save()
         page.alpha(0.85)
         page.set_fill(*PARCHMENT)
-        page.rect(x - 6, y - 5, bar_w + 12, 21)
+        page.rect(x - 6 * k, y - 5 * k, bar_w + 12 * k, 21 * k)
         page.fill()
         page.restore()
         page.set_stroke(*INK)
-        page.set_width(0.7)
+        page.set_width(0.7 * k)
         half = span // 2
         for (x0, x1, filled) in ((0, half, True), (half, span, False)):
             page.set_fill(*INK if filled else PARCHMENT)
             page.rect(x + x0 * pts_per_mile, y,
-                      (x1 - x0) * pts_per_mile, 3.4)
+                      (x1 - x0) * pts_per_mile, 3.4 * k)
             page.fill()
             page.rect(x + x0 * pts_per_mile, y,
-                      (x1 - x0) * pts_per_mile, 3.4)
+                      (x1 - x0) * pts_per_mile, 3.4 * k)
             page.stroke()
         page.set_fill(*INK)
-        page.text(x - measure("0", "Helvetica", 5.5) / 2, y + 6.5, "0",
-                  font="Helvetica", size=5.5)
+        fs = 5.5 * k
+        page.text(x - measure("0", "Helvetica", fs) / 2, y + 6.5 * k, "0",
+                  font="Helvetica", size=fs)
         mid = str(half)
-        page.text(x + bar_w / 2 - measure(mid, "Helvetica", 5.5) / 2,
-                  y + 6.5, mid, font="Helvetica", size=5.5)
+        page.text(x + bar_w / 2 - measure(mid, "Helvetica", fs) / 2,
+                  y + 6.5 * k, mid, font="Helvetica", size=fs)
         lbl = f"{span} miles"
-        page.text(x + bar_w - measure(str(span), "Helvetica", 5.5) / 2,
-                  y + 6.5, lbl, font="Helvetica", size=5.5)
+        page.text(x + bar_w - measure(str(span), "Helvetica", fs) / 2,
+                  y + 6.5 * k, lbl, font="Helvetica", size=fs)
 
     def _cartouche(self, page):
         x, y, tw, th, t_size, title, sub = self._cart_rect
+        k = self.k
         page.save()
         page.alpha(0.92)
         page.set_fill(*_mix(PARCHMENT, PARCHMENT_DEEP, 0.35))
@@ -902,18 +944,18 @@ class MapRenderer:
         page.fill()
         page.restore()
         page.set_stroke(*INK)
-        page.set_width(1.2)
+        page.set_width(1.2 * k)
         page.rect(x, y, tw, th)
         page.stroke()
-        page.set_width(0.5)
-        page.rect(x + 2.5, y + 2.5, tw - 5, th - 5)
+        page.set_width(0.5 * k)
+        page.rect(x + 2.5 * k, y + 2.5 * k, tw - 5 * k, th - 5 * k)
         page.stroke()
         page.set_fill(*INK)
         cx = x + tw / 2
-        page.text(cx - measure(title, "Times-Bold", t_size) / 2, y + th - 22,
-                  title, font="Times-Bold", size=t_size)
-        page.text(cx - measure(sub, "Times-Italic", 7.5) / 2, y + 10,
-                  sub, font="Times-Italic", size=7.5)
+        page.text(cx - measure(title, "Times-Bold", t_size) / 2,
+                  y + th - 22 * k, title, font="Times-Bold", size=t_size)
+        page.text(cx - measure(sub, "Times-Italic", 7.5 * k) / 2, y + 10 * k,
+                  sub, font="Times-Italic", size=7.5 * k)
 
     def _hex_overlay(self, page):
         miles = self.world.lore["miles_per_cell"] if self.world.lore else 2.0
