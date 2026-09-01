@@ -1,6 +1,8 @@
 """Start the real program in a real terminal and watch it work."""
 
+import io
 import os
+import sys
 import time
 import unittest
 
@@ -153,6 +155,48 @@ class ItWorksWithoutAScreen(unittest.TestCase):
             self.assertNotIn("▀", run.buffer)
             run.press(b"q")
             self.assertEqual(run.wait(), 0)
+
+
+class WithoutKeys(unittest.TestCase):
+    """Anywhere raw key reading is unavailable, it should still turn."""
+
+    class Deaf:
+        """A screen that hears nothing, then hears someone say stop."""
+
+        def __init__(self, quiet_rounds):
+            self.left = quiet_rounds
+
+        def pressed(self, timeout):
+            self.left -= 1
+            return None if self.left > 0 else "q"
+
+    def test_it_runs_and_stops_without_a_keyboard(self):
+        from umbra import app
+        from umbra.carve import Solid
+
+        out = io.StringIO()
+        out.isatty = lambda: True
+        table = app.Turntable(Solid("HI", "OK"), out=out, mode="truecolor")
+        table.measure = lambda: ((60, 20), (59, 20), _small(table.solid))
+        table.run(self.Deaf(4))
+        painted = out.getvalue()
+        self.assertIn("▀", painted)
+        self.assertIn("carving", painted)
+
+    def test_a_closed_stdin_does_not_upset_it(self):
+        from umbra import app
+
+        saved = sys.stdin
+        try:
+            sys.stdin = None
+            self.assertFalse(app.Screen(io.StringIO()).keys)
+        finally:
+            sys.stdin = saved
+
+
+def _small(solid):
+    from umbra.render import fit
+    return fit(solid, 59, 32)
 
 
 class ItRefusesPolitely(unittest.TestCase):

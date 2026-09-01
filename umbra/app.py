@@ -54,12 +54,19 @@ def _mix(a, b, t):
             int(a[2] + (b[2] - a[2]) * t))
 
 
+def _stdin_is_a_terminal():
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
 class Screen:
     """Alternate buffer, hidden cursor, raw keys -- and always put back."""
 
     def __init__(self, out=sys.stdout, keys=True):
         self.out = out
-        self.keys = keys and termios is not None and sys.stdin.isatty()
+        self.keys = keys and termios is not None and _stdin_is_a_terminal()
         self._saved = None
 
     def __enter__(self):
