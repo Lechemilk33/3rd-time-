@@ -25,17 +25,11 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     ],
   },
   {
-    title: "Booking",
+    title: "Header button",
+    description: "The big button at the top of every page. Availability and booking rules live in Schedule & availability.",
     fields: [
-      {
-        key: "bookingUrl",
-        label: "Calendly link",
-        type: "url",
-        placeholder: "https://calendly.com/your-name",
-        help: "Paste your Calendly page or event link. It shows up on the Book page and in the client portal.",
-      },
-      { key: "headerCtaLabel", label: "Header button text", type: "text" },
-      { key: "headerCtaHref", label: "Header button link", type: "url", placeholder: "/book" },
+      { key: "headerCtaLabel", label: "Button text", type: "text" },
+      { key: "headerCtaHref", label: "Button link", type: "url", placeholder: "/book" },
     ],
   },
   {

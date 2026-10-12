@@ -21,7 +21,9 @@ export async function ServicesSection({ data }: { data: SectionData }) {
       ) : (
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {services.map((service) => {
-            const href = safeHref(service.booking_url || settings.headerCtaHref || "/book", "/book");
+            const href = service.bookable
+              ? `/portal/book?service=${service.id}`
+              : safeHref(settings.headerCtaHref || "/book", "/book");
             return (
               <li
                 key={service.id}

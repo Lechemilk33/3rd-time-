@@ -4,13 +4,16 @@ Website, client portal and admin portal for **Waiting for Paws**, a dog walking 
 Ocean Beach, San Diego ([@waitingforpaws](https://www.instagram.com/waitingforpaws/)).
 
 - **Public website**: pages are built from sections the owner can add, reorder, hide and edit.
-- **Client portal** (`/portal`): clients sign up, add their pups (with photos), fill out the intake
-  form, book through Calendly and pay with Stripe.
-- **Admin portal** (`/admin`): edit every page, photo, price, color and intake question without
-  code, and manage clients, bookings, messages and payments.
+- **Client portal** (`/portal`): clients sign up, add their pups (with photos), fill out a
+  service-aware intake form, book visits (one-off or weekly), reschedule or cancel, and pay with
+  Stripe.
+- **Admin portal** (`/admin`): a live team calendar (day, week, month and agenda views with hover
+  cards and drag-and-drop), booking for any client with search by pup, owner, phone or address,
+  walkers’ availability and time off, plus editing every page, photo, price, color and intake
+  question without code.
 
 Built with Next.js 16 (App Router, Cache Components), Tailwind CSS 4, Supabase (Postgres, Auth,
-Storage), Stripe Checkout and Calendly.
+Storage, Realtime, pg_cron, pg_net), Resend and Stripe Checkout.
 
 ## Brand colors
 
@@ -72,14 +75,36 @@ intake form into the database, and from then on everything is editable.
 Import the repo into Vercel and add the environment variables from `.env.example`. No other
 configuration is needed.
 
-### 4. Calendly (booking)
+### 4. Booking
 
-- Paste your Calendly link in **Admin → Settings → Booking**. The scheduler is embedded on the
-  `/book` page and in the client portal, pre-filled with the client's name and email. Each service
-  can also have its own Calendly event link.
-- Optional: to sync bookings into the portals, create a Calendly webhook subscription (paid
-  Calendly plans) for `invitee.created` and `invitee.canceled` pointing at
-  `https://YOUR-DOMAIN/api/webhooks/calendly`, and set `CALENDLY_WEBHOOK_SIGNING_KEY`.
+Booking is built in — no third-party scheduler.
+
+- **How clients book:** they pick a service, their pup(s), a day and an **arrival window**
+  (e.g. Midday, 11 AM – 2 PM), and can repeat it weekly. New clients can only book services
+  marked “Anyone with an account” (the Meet & Greet); everything else unlocks once an admin
+  approves them (toggle on the client’s profile, or approve their intake form).
+- **Capacity:** in **Admin → Schedule & availability** each walker sets how many visits they can
+  take per window per weekday, plus time off. Bookings are checked and assigned atomically in the
+  database (`book_visits`), so two people can never take the last spot. Clients keep the walker
+  they know when possible.
+- **Calendar:** **Admin → Calendar** shows every visit color-coded by walker. Hover for details,
+  click for the full card (client, pups, access notes, actions), drag to pin an exact time, move
+  days or reassign walkers (Day view), click an empty slot to book. Updates live via Supabase
+  Realtime. Each admin can subscribe to a private iCal feed (`/api/calendar/<token>`) from
+  Google or Apple Calendar.
+- **Emails** (confirmations, requests, changes, cancellations, evening-before reminders, each
+  walker’s next-day schedule) are sent from the database with Resend through `pg_net`, so they go
+  out no matter where a change comes from. Store a sending-only Resend key in Supabase Vault:
+
+  ```sql
+  select vault.create_secret('re_…', 'resend_api_key', 'Resend key for booking emails');
+  ```
+
+  Reminders run from a `pg_cron` job every hour. Use **Send a test** in Schedule & availability to
+  check delivery.
+- **Intake per service:** one intake form for everyone; in **Admin → Intake form** any question can
+  be limited to specific services. Clients only answer what applies to them, and are asked the
+  rest when they add or first book a service.
 
 ### 5. Stripe (payments)
 
@@ -103,6 +128,9 @@ amount always comes from the service's price in the database.
 | Services & prices          | `services`                                                |
 | Gallery                    | `gallery_photos` + Supabase Storage (`media/gallery/…`)   |
 | Intake form questions      | `forms` (JSON field list); answers in `form_submissions`  |
+| Booking rules & windows    | `booking_settings`, `booking_windows`                     |
+| Walkers & availability     | `walkers`, `walker_availability`, `time_off`              |
+| Visits                     | `bookings` + `booking_pets`                               |
 
 Public pages are cached with `"use cache"` and tagged `site-content`. Every admin save calls
 `updateTag("site-content")`, so changes show up on the live site immediately. Photos are resized
@@ -121,16 +149,21 @@ app/
   (auth)/            login, signup, forgot password
   portal/            client portal
   admin/             admin portal (+ _actions/ server actions)
-  api/webhooks/      Stripe and Calendly webhooks
+  api/webhooks/      Stripe webhook
+  api/calendar/      private iCal feeds for admins
   auth/              email link callback, sign out
 components/
   sections/          public renderers, one per section type
-  admin/             page builder, schema-driven forms, gallery, form builder
-  portal/            client portal forms
+  admin/             page builder, schema-driven forms, gallery, form builder, schedule
+  booking/           booking wizard, date/window picker, client & pup search
+  calendar/          admin calendar (time grid, month, agenda, hover card, drawer)
+  portal/            client portal forms and visit list
 lib/
   content.ts         cached reads of public content (with starter-content fallback)
   defaults.ts        starter copy, services and intake form
   sections.ts        section types and their editable fields
+  booking.ts         booking types and helpers (dates in lib/dates.ts)
+  intake.ts          which intake questions apply to which services
   auth.ts            current user / requireUser / requireAdmin
 supabase/migrations/ database schema, RLS and storage policies
 proxy.ts             refreshes Supabase sessions and guards /portal and /admin
@@ -143,6 +176,9 @@ proxy.ts             refreshes Supabase sessions and guards /portal and /admin
   A database trigger stops anyone but an admin from changing a role.
 - Clients can only upload photos into `media/pets/<their user id>/`. Only admins can upload site
   photos.
+- Clients can’t write bookings directly; every booking change goes through security-definer
+  functions that check ownership, approval, notice and cancellation cutoffs, and capacity.
+  Approval and intake review status can only be changed by admins (enforced by triggers).
 - Admin text is rendered as plain text (paragraphs and bullet lists only, never HTML), and links
   are limited to relative paths, `http(s)`, `mailto:` and `tel:`.
 - Theme colors are validated as hex before they are written into CSS.

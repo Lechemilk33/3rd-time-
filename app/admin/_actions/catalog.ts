@@ -32,6 +32,10 @@ function cleanService(input: ServiceInput): ServiceInput {
     booking_url: clampText(input.booking_url, 1000) || null,
     active: Boolean(input.active),
     allow_online_payment: Boolean(input.allow_online_payment),
+    bookable: Boolean(input.bookable),
+    audience: input.audience === "everyone" ? "everyone" : "approved",
+    confirmation: input.confirmation === "request" ? "request" : "instant",
+    max_pets: Math.min(10, Math.max(1, Math.round(Number(input.max_pets) || 3))),
   };
 }
 
@@ -46,6 +50,9 @@ export async function createService(): Promise<ServicesResult> {
     duration_minutes: 30,
     active: false,
     allow_online_payment: false,
+    bookable: true,
+    audience: "approved",
+    confirmation: "instant",
     position: services.length,
   });
   if (error) return { ok: false, error: error.message };
@@ -169,6 +176,8 @@ const FIELD_TYPES: FormFieldType[] = [
 
 export async function saveForm(input: FormDefinition): Promise<ActionResult> {
   const supabase = await adminClient();
+  const { data: serviceRows } = await supabase.from("services").select("id");
+  const serviceIds = new Set((serviceRows ?? []).map((s) => s.id as string));
   const seen = new Set<string>();
   const fields: FormField[] = [];
   for (const f of (input.fields ?? []).slice(0, 100)) {
@@ -182,6 +191,7 @@ export async function saveForm(input: FormDefinition): Promise<ActionResult> {
       ? (f.options ?? []).map((o) => clampText(o, 120).trim()).filter(Boolean).slice(0, 30)
       : undefined;
     if (needsOptions && !options?.length) return { ok: false, error: `“${label}” needs at least one choice.` };
+    const services = (f.services ?? []).filter((s) => serviceIds.has(s));
     fields.push({
       id,
       type: f.type,
@@ -189,6 +199,7 @@ export async function saveForm(input: FormDefinition): Promise<ActionResult> {
       help: clampText(f.help, 300).trim() || undefined,
       required: f.type === "heading" ? undefined : Boolean(f.required),
       options,
+      services: services.length ? services : undefined,
     });
   }
 

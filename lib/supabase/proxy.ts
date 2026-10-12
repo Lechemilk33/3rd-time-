@@ -36,8 +36,9 @@ export async function updateSession(request: NextRequest) {
   if (signedIn && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
     const next = url.searchParams.get("next");
-    url.pathname = next && next.startsWith("/") && !next.startsWith("//") ? next : "/portal";
-    url.search = "";
+    const target = new URL(next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/portal", url);
+    url.pathname = target.pathname;
+    url.search = target.search;
     const redirect = NextResponse.redirect(url);
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;

@@ -4,16 +4,19 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { setSubmissionStatus } from "@/app/admin/_actions/business";
 import { adminData } from "@/app/admin/_lib";
-import { ClientNotesForm, RoleToggle } from "@/components/admin/client-tools";
+import { ApprovalToggle, ClientNotesForm, RoleToggle } from "@/components/admin/client-tools";
 import { PageTitle } from "@/components/dashboard/shell";
 import { FormAnswersView } from "@/components/forms/dynamic-form-fields";
 import { BookingList } from "@/components/portal/booking-list";
 import { Badge } from "@/components/ui/badge";
+import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Photo } from "@/components/ui/photo";
+import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
+import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { formatAge, formatDate, formatMoney } from "@/lib/format";
-import type { Booking, FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
+import type { FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default async function ClientDetailPage({ params }: PageProps<"/admin/clients/[id]">) {
@@ -21,14 +24,17 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle<Profile>();
   if (!profile) notFound();
 
-  const [petsRes, submissionRes, notesRes, bookingsRes, paymentsRes, form] = await Promise.all([
+  const [petsRes, submissionRes, notesRes, bookingsRes, paymentsRes, form, config, servicesRes] = await Promise.all([
     supabase.from("pets").select("*").eq("owner_id", id).order("created_at"),
     supabase.from("form_submissions").select("*").eq("user_id", id).eq("form_slug", "intake").maybeSingle<FormSubmission>(),
     supabase.from("client_notes").select("notes").eq("user_id", id).maybeSingle(),
-    supabase.from("bookings").select("*").eq("user_id", id).order("start_time", { ascending: false }).limit(20),
+    supabase.from("bookings").select(BOOKING_DETAIL_SELECT).eq("user_id", id).order("start_time", { ascending: false }).limit(25),
     supabase.from("payments").select("*").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
     getForm("intake"),
+    getBookingConfig(supabase),
+    supabase.from("services").select("id, name").order("position"),
   ]);
+  const serviceNames = new Map((servicesRes.data ?? []).map((s) => [s.id as string, s.name as string]));
   const pets = (petsRes.data ?? []) as Pet[];
   const submission = submissionRes.data;
   const payments = (paymentsRes.data ?? []) as Payment[];
@@ -42,7 +48,12 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
       <PageTitle
         title={profile.full_name || profile.email || "Client"}
         description={`Joined ${formatDate(profile.created_at)}`}
-        actions={profile.id !== admin.id ? <RoleToggle userId={profile.id} role={profile.role} /> : null}
+        actions={
+          <>
+            <ButtonLink href={`/admin/calendar/new?client=${profile.id}`}>Book a visit</ButtonLink>
+            {profile.id !== admin.id ? <RoleToggle userId={profile.id} role={profile.role} /> : null}
+          </>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
@@ -75,6 +86,13 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
             ) : null}
           </Card>
 
+          {profile.role === "client" ? (
+            <Card>
+              <h2 className="mb-3 text-xl font-semibold">Booking</h2>
+              <ApprovalToggle userId={profile.id} approved={profile.booking_approved} />
+            </Card>
+          ) : null}
+
           <Card>
             <h2 className="mb-1 text-xl font-semibold">Private notes</h2>
             <p className="mb-3 text-sm text-ink-600">Only admins can see these.</p>
@@ -82,8 +100,15 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
           </Card>
 
           <Card>
-            <h2 className="mb-3 text-xl font-semibold">Bookings</h2>
-            <BookingList bookings={(bookingsRes.data ?? []) as Booking[]} empty="No bookings yet." />
+            <h2 className="mb-3 text-xl font-semibold">Visits</h2>
+            <BookingList
+              bookings={normalizeBookings(bookingsRes.data)}
+              windows={config.windows}
+              walkers={config.walkers}
+              timeZone={config.settings.timezone}
+              empty="No visits yet."
+              hrefFor={(b) => `/admin/calendar?view=week&date=${b.service_date}&b=${b.id}`}
+            />
           </Card>
 
           <Card>
@@ -175,7 +200,22 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                     {submission.status}
                   </Badge>
                 </p>
-                <FormAnswersView fields={form.fields} answers={submission.answers} />
+                {submission.service_ids?.length ? (
+                  <div className="mb-4 flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-bold text-ink-600">Interested in:</span>
+                    {submission.service_ids.map((sid) => (
+                      <Badge key={sid} tone="sea">
+                        {serviceNames.get(sid) ?? "Removed service"}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+                <FormAnswersView
+                  fields={form.fields}
+                  answers={submission.answers}
+                  serviceIds={submission.service_ids ?? []}
+                  serviceNames={serviceNames}
+                />
               </>
             ) : (
               <p className="text-ink-600">Not submitted yet.</p>

@@ -5,6 +5,7 @@ import { refresh } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { getForm } from "@/lib/content";
 import { createClient } from "@/lib/supabase/server";
+import { missingMessage, readAnswers, visibleFields } from "@/lib/intake";
 import type { ActionResult, FormAnswers } from "@/lib/types";
 import { formString } from "@/lib/utils";
 
@@ -89,43 +90,27 @@ export async function submitIntake(_prev: ActionResult | null, formData: FormDat
   const form = await getForm("intake");
   if (!form) return { ok: false, error: "The intake form isn’t available right now." };
 
-  const answers: FormAnswers = {};
-  const missing: string[] = [];
-
-  for (const field of form.fields) {
-    if (field.type === "heading") continue;
-    const key = `f_${field.id}`;
-    let value: string | string[] | boolean;
-    if (field.type === "checkboxes") {
-      const options = field.options ?? [];
-      value = formData.getAll(key).map(String).filter((v) => options.includes(v));
-      if (field.required && value.length === 0) missing.push(field.label);
-    } else if (field.type === "agreement") {
-      value = formData.get(key) === "on";
-      if (field.required && !value) missing.push(field.label);
-    } else {
-      const raw = (formString(formData, key) ?? "").slice(0, 5000);
-      value = raw;
-      if ((field.type === "select" || field.type === "radio") && raw && !(field.options ?? []).includes(raw)) {
-        value = "";
-      }
-      if (field.type === "yesno" && raw && raw !== "Yes" && raw !== "No") value = "";
-      if (field.required && !value) missing.push(field.label);
-    }
-    answers[field.id] = value;
-  }
-
-  if (missing.length) {
-    return { ok: false, error: `Please answer: ${missing.slice(0, 3).join(" · ")}${missing.length > 3 ? " …" : ""}` };
-  }
-
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("form_submissions")
-    .upsert(
-      { form_slug: form.slug, user_id: user.id, answers, status: "submitted" },
-      { onConflict: "form_slug,user_id" },
-    );
+  const [servicesRes, existingRes] = await Promise.all([
+    supabase.from("services").select("id").eq("active", true),
+    supabase.from("form_submissions").select("answers").eq("form_slug", form.slug).eq("user_id", user.id).maybeSingle(),
+  ]);
+  const valid = new Set((servicesRes.data ?? []).map((s) => s.id as string));
+  const serviceIds = [...new Set(formData.getAll("service_ids").map(String))].filter((id) => valid.has(id));
+
+  // Only questions for the services they picked are required.
+  const { answers, missing } = readAnswers(form.fields, formData, visibleFields(form.fields, serviceIds));
+  if (missing.length) return { ok: false, error: missingMessage(missing) };
+
+  const { error } = await supabase.from("form_submissions").upsert(
+    {
+      form_slug: form.slug,
+      user_id: user.id,
+      answers: { ...((existingRes.data?.answers as FormAnswers | undefined) ?? {}), ...answers },
+      service_ids: serviceIds,
+    },
+    { onConflict: "form_slug,user_id" },
+  );
   if (error) return { ok: false, error: error.message };
   refresh();
   return { ok: true, message: "Thanks! Your intake form is in. We’ll review it before your meet & greet. 🐾" };

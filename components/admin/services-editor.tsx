@@ -8,7 +8,7 @@ import { IconButton } from "@/components/admin/schema-form";
 import { ImageUpload } from "@/components/image-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea } from "@/components/ui/form";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { formatDuration, formatPrice } from "@/lib/format";
 import type { Service } from "@/lib/types";
@@ -112,6 +112,9 @@ function ServiceCard({
             <span className="flex flex-wrap items-center gap-2">
               <span className="font-bold">{service.name}</span>
               {!service.active ? <Badge tone="gray">Hidden</Badge> : null}
+              {service.bookable ? (
+                <Badge tone="sea">{service.confirmation === "request" ? "Book on request" : "Book online"}</Badge>
+              ) : null}
               {service.allow_online_payment ? <Badge tone="green">Pay online</Badge> : null}
             </span>
             <span className="block text-sm text-ink-600">
@@ -172,22 +175,45 @@ function ServiceCard({
                 onChange={(e) => set("duration_minutes", e.target.value === "" ? null : Number(e.target.value))}
               />
             </Field>
-            <Field
-              label="Calendly link for this service (optional)"
-              htmlFor={`book-${service.id}`}
-              help="Where the Book button goes. Leave blank to use the main booking page."
-            >
-              <Input
-                id={`book-${service.id}`}
-                value={draft.booking_url ?? ""}
-                placeholder="https://calendly.com/…"
-                onChange={(e) => set("booking_url", e.target.value)}
-              />
-            </Field>
           </div>
           <Field label="Photo (optional)">
             <ImageUpload value={draft.image_url ?? ""} onChange={(url) => set("image_url", url)} folder="services" />
           </Field>
+          <div className="space-y-4 rounded-2xl bg-sea-50 p-4">
+            <label className="flex items-center gap-2 font-bold">
+              <input type="checkbox" className="size-5 accent-ocean" checked={draft.bookable} onChange={(e) => set("bookable", e.target.checked)} />
+              Clients can book this online
+            </label>
+            {draft.bookable ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Who can book it" htmlFor={`aud-${service.id}`}>
+                  <Select id={`aud-${service.id}`} value={draft.audience} onChange={(e) => set("audience", e.target.value as Service["audience"])}>
+                    <option value="approved">Approved clients</option>
+                    <option value="everyone">Anyone with an account</option>
+                  </Select>
+                </Field>
+                <Field label="Booking" htmlFor={`conf-${service.id}`}>
+                  <Select id={`conf-${service.id}`} value={draft.confirmation} onChange={(e) => set("confirmation", e.target.value as Service["confirmation"])}>
+                    <option value="instant">Booked instantly</option>
+                    <option value="request">You confirm each request</option>
+                  </Select>
+                </Field>
+                <Field label="Pups per visit" htmlFor={`pets-${service.id}`}>
+                  <Input
+                    id={`pets-${service.id}`}
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={draft.max_pets}
+                    onChange={(e) => set("max_pets", Number(e.target.value))}
+                  />
+                </Field>
+              </div>
+            ) : null}
+            <p className="text-sm text-ink-600">
+              Tip: new clients usually book a Meet &amp; Greet (anyone, you confirm) and unlock regular walks once you approve them.
+            </p>
+          </div>
           <div className="flex flex-wrap gap-6">
             <label className="flex items-center gap-2 font-bold">
               <input type="checkbox" className="size-5 accent-ocean" checked={draft.active} onChange={(e) => set("active", e.target.checked)} />

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { FormDefinition, FormField, FormFieldType } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const TYPE_OPTIONS: { value: FormFieldType; label: string }[] = [
   { value: "heading", label: "Section heading" },
@@ -31,7 +32,13 @@ function newFieldId() {
   return `q_${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export function FormBuilder({ initial }: { initial: FormDefinition }) {
+export function FormBuilder({
+  initial,
+  services,
+}: {
+  initial: FormDefinition;
+  services: { id: string; name: string }[];
+}) {
   const [saved, setSaved] = useState(initial);
   const [form, setForm] = useState(initial);
   const [pending, start] = useTransition();
@@ -123,6 +130,7 @@ export function FormBuilder({ initial }: { initial: FormDefinition }) {
                 </IconButton>
               </div>
             </div>
+            <AskFor services={services} value={field.services ?? []} onChange={(ids) => setField(index, { services: ids.length ? ids : undefined })} />
             {field.type !== "heading" ? (
               <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
                 <div className="space-y-3">
@@ -184,6 +192,49 @@ export function FormBuilder({ initial }: { initial: FormDefinition }) {
           label="Save form"
         />
       </div>
+    </div>
+  );
+}
+
+/** Who gets asked a question: everyone, or only clients who signed up for certain services. */
+function AskFor({
+  services,
+  value,
+  onChange,
+}: {
+  services: { id: string; name: string }[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  if (!services.length) return null;
+  const everyone = value.length === 0;
+  const chip = "rounded-full border-2 px-3 py-1 text-xs font-bold transition";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-xs font-extrabold tracking-wider text-ink-400 uppercase">Ask</span>
+      <button
+        type="button"
+        aria-pressed={everyone}
+        onClick={() => onChange([])}
+        className={cn(chip, everyone ? "border-ink bg-ink text-white" : "border-ink-100 bg-white text-ink-600 hover:border-ink-200")}
+      >
+        Everyone
+      </button>
+      <span className="px-1 text-xs font-bold text-ink-400">or only for</span>
+      {services.map((s) => {
+        const on = value.includes(s.id);
+        return (
+          <button
+            key={s.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(on ? value.filter((x) => x !== s.id) : [...value, s.id])}
+            className={cn(chip, on ? "border-ocean bg-sea-100 text-ink" : "border-ink-100 bg-white text-ink-600 hover:border-ink-200")}
+          >
+            {s.name}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { CopyField } from "@/components/admin/client-tools";
 import { PageTitle } from "@/components/dashboard/shell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { getSiteSettings } from "@/lib/content";
 import { getOrigin } from "@/lib/origin";
 import { isServiceRoleConfigured } from "@/lib/supabase/admin";
 import { isStripeConfigured, isStripeTestMode } from "@/lib/stripe";
@@ -15,42 +14,33 @@ function Status({ ok, children }: { ok: boolean; children: ReactNode }) {
 }
 
 export default async function IntegrationsPage() {
-  await adminData();
-  const [origin, settings] = await Promise.all([getOrigin(), getSiteSettings()]);
-  const calendlyLinked = /^https:\/\/calendly\.com\//.test(settings.bookingUrl);
-  const calendlyWebhook = Boolean(process.env.CALENDLY_WEBHOOK_SIGNING_KEY);
+  const { supabase } = await adminData();
+  const [origin, emailRes] = await Promise.all([getOrigin(), supabase.rpc("email_status")]);
   const stripe = isStripeConfigured();
   const stripeWebhook = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
   const serviceRole = isServiceRoleConfigured();
 
   return (
     <>
-      <PageTitle title="Integrations" description="Booking with Calendly and payments with Stripe." />
+      <PageTitle title="Integrations" description="Booking, payments and the connections behind them." />
       <div className="space-y-6">
         <Card>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="mr-2 text-xl font-semibold">📅 Calendly</h2>
-            <Status ok={calendlyLinked}>{calendlyLinked ? "Scheduler linked" : "No link yet"}</Status>
-            <Status ok={calendlyWebhook}>{calendlyWebhook ? "Bookings sync on" : "Sync off"}</Status>
+            <h2 className="mr-2 text-xl font-semibold">📅 Booking &amp; calendar</h2>
+            <Status ok>Built in</Status>
+            <Status ok={Boolean(emailRes.data)}>{emailRes.data ? "Emails on" : "Emails off"}</Status>
           </div>
-          <ol className="list-decimal space-y-2 pl-5 text-ink">
-            <li>
-              Paste your Calendly link in{" "}
-              <Link href="/admin/settings" className="font-bold text-ocean underline">
-                Settings → Booking
-              </Link>
-              . The scheduler appears on your Book page and in the client portal (pre-filled with the client’s name and email).
-            </li>
-            <li>
-              Optional — to see bookings in your admin and in each client’s portal, create a Calendly webhook
-              (needs a paid Calendly plan) for <code className="rounded bg-sea-50 px-1">invitee.created</code> and{" "}
-              <code className="rounded bg-sea-50 px-1">invitee.canceled</code> pointing to the URL below, then add its
-              signing key as <code className="rounded bg-sea-50 px-1">CALENDLY_WEBHOOK_SIGNING_KEY</code> in Vercel.
-            </li>
-          </ol>
-          <div className="mt-4 max-w-xl">
-            <CopyField label="Calendly webhook URL" value={`${origin}/api/webhooks/calendly`} />
-          </div>
+          <p className="text-ink">
+            Clients book from their portal, and every visit shows up on your{" "}
+            <Link href="/admin/calendar" className="font-bold text-ocean underline">
+              calendar
+            </Link>
+            . Set walkers’ hours, time windows, time off and reminders in{" "}
+            <Link href="/admin/schedule" className="font-bold text-ocean underline">
+              Schedule &amp; availability
+            </Link>
+            , where you can also subscribe to your bookings from Google or Apple Calendar.
+          </p>
         </Card>
 
         <Card>
@@ -89,7 +79,7 @@ export default async function IntegrationsPage() {
             <Status ok={serviceRole}>{serviceRole ? "Secret key set" : "Secret key missing"}</Status>
           </div>
           <p className="text-ink">
-            Webhooks (Calendly and Stripe) and automatic admin access for the emails in{" "}
+            The Stripe webhook and automatic admin access for the emails in{" "}
             <code className="rounded bg-sea-50 px-1">ADMIN_EMAILS</code> need the Supabase secret key saved as{" "}
             <code className="rounded bg-sea-50 px-1">SUPABASE_SECRET_KEY</code> in Vercel.
           </p>

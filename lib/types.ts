@@ -16,7 +16,6 @@ export type SiteSettings = {
   instagramUrl: string;
   serviceAreaSummary: string;
   hours: string;
-  bookingUrl: string;
   headerCtaLabel: string;
   headerCtaHref: string;
   footerBlurb: string;
@@ -67,6 +66,13 @@ export type Service = {
   active: boolean;
   allow_online_payment: boolean;
   position: number;
+  /** Clients can book it from the portal. */
+  bookable: boolean;
+  /** everyone = any client (meet & greet); approved = clients an admin approved. */
+  audience: "everyone" | "approved";
+  /** instant = booked right away; request = an admin confirms it. */
+  confirmation: "instant" | "request";
+  max_pets: number;
 };
 
 export type GalleryPhoto = {
@@ -99,6 +105,8 @@ export type FormField = {
   help?: string;
   required?: boolean;
   options?: string[];
+  /** Only ask clients who signed up for one of these services (service ids). Empty = everyone. */
+  services?: string[];
 };
 
 export type FormDefinition = {
@@ -117,6 +125,8 @@ export type FormSubmission = {
   form_slug: string;
   user_id: string;
   answers: FormAnswers;
+  /** Services the client signed up for. */
+  service_ids: string[];
   status: SubmissionStatus;
   created_at: string;
   updated_at: string;
@@ -132,6 +142,8 @@ export type Profile = {
   emergency_contact_phone: string | null;
   access_notes: string | null;
   role: "client" | "admin";
+  /** An admin approved this client for regular visits. */
+  booking_approved: boolean;
   created_at: string;
 };
 
@@ -155,24 +167,33 @@ export type Pet = {
   created_at: string;
 };
 
-export type BookingStatus = "scheduled" | "completed" | "canceled";
+export type BookingStatus = "requested" | "scheduled" | "completed" | "canceled" | "declined";
 
 export type Booking = {
   id: string;
   user_id: string | null;
-  pet_id: string | null;
   service_id: string | null;
   title: string;
   start_time: string;
   end_time: string | null;
   status: BookingStatus;
-  source: "manual" | "calendly";
+  source: "portal" | "manual";
+  service_date: string;
+  window_id: string | null;
+  /** "HH:MM:SS" local time an admin pinned, if any. */
+  arrival_time: string | null;
+  duration_minutes: number;
+  walker_id: string | null;
+  series_id: string | null;
+  /** Visit notes from the team (the client can see these). */
+  notes: string | null;
+  /** What the client wrote when booking. */
+  client_note: string | null;
+  cancel_reason: string | null;
   invitee_name: string | null;
   invitee_email: string | null;
-  cancel_url: string | null;
-  reschedule_url: string | null;
-  notes: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 export type Payment = {

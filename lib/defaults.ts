@@ -1,3 +1,4 @@
+import { DEFAULT_BOOKING_STEPS } from "@/lib/sections";
 import { DEFAULT_THEME } from "@/lib/theme";
 import type { FormDefinition, Page, Section, Service, SiteSettings } from "@/lib/types";
 
@@ -18,7 +19,6 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   instagramUrl: INSTAGRAM_URL,
   serviceAreaSummary: "Ocean Beach & nearby San Diego neighborhoods",
   hours: "",
-  bookingUrl: "",
   headerCtaLabel: "Book a walk",
   headerCtaHref: "/book",
   footerBlurb: "Local, loving dog walks for Ocean Beach pups. Salty paws, happy tails.",
@@ -421,11 +421,10 @@ export const DEFAULT_PAGES: DefaultPage[] = [
         visible: true,
         data: {
           eyebrow: "",
-          heading: "Pick a time",
+          heading: "Booking is easy",
           intro: "",
-          bookingUrl: "",
-          fallbackText:
-            "Online booking is coming soon! In the meantime, send us a message and we’ll get you on the schedule.",
+          steps: DEFAULT_BOOKING_STEPS,
+          buttonLabel: "Get started",
           background: "white",
         },
       },
@@ -457,6 +456,10 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     booking_url: null,
     active: true,
     allow_online_payment: true,
+    bookable: true,
+    audience: "approved",
+    confirmation: "instant",
+    max_pets: 3,
     position: 0,
   },
   {
@@ -469,6 +472,10 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     booking_url: null,
     active: true,
     allow_online_payment: true,
+    bookable: true,
+    audience: "approved",
+    confirmation: "instant",
+    max_pets: 3,
     position: 1,
   },
   {
@@ -481,6 +488,10 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     booking_url: null,
     active: true,
     allow_online_payment: true,
+    bookable: true,
+    audience: "approved",
+    confirmation: "instant",
+    max_pets: 3,
     position: 2,
   },
   {
@@ -493,6 +504,10 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     booking_url: null,
     active: true,
     allow_online_payment: false,
+    bookable: true,
+    audience: "everyone",
+    confirmation: "request",
+    max_pets: 5,
     position: 3,
   },
 ];

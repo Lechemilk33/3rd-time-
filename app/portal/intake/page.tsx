@@ -27,12 +27,14 @@ export default async function IntakePage() {
   }
 
   const supabase = await createClient();
-  const { data: submission } = await supabase
-    .from("form_submissions")
-    .select("*")
-    .eq("form_slug", form.slug)
-    .eq("user_id", user.id)
-    .maybeSingle<FormSubmission>();
+  const [{ data: submission }, servicesRes] = await Promise.all([
+    supabase.from("form_submissions").select("*").eq("form_slug", form.slug).eq("user_id", user.id).maybeSingle<FormSubmission>(),
+    supabase
+      .from("services")
+      .select("id, name, description, price_cents, price_label, duration_minutes")
+      .eq("active", true)
+      .order("position"),
+  ]);
 
   return (
     <>
@@ -47,7 +49,13 @@ export default async function IntakePage() {
           ) : null
         }
       />
-      <IntakeForm fields={form.fields} answers={submission?.answers ?? {}} submitted={Boolean(submission)} />
+      <IntakeForm
+        fields={form.fields}
+        answers={submission?.answers ?? {}}
+        services={servicesRes.data ?? []}
+        selectedServiceIds={submission?.service_ids ?? []}
+        submitted={Boolean(submission)}
+      />
     </>
   );
 }

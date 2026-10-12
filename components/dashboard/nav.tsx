@@ -1,8 +1,11 @@
 "use client";
 
 import {
+  CalendarCheck2,
   CalendarDays,
+  CalendarPlus,
   ClipboardList,
+  Clock,
   CreditCard,
   House,
   Images,
@@ -29,16 +32,22 @@ const NAV: Record<"portal" | "admin", NavGroup[]> = {
     {
       items: [
         { href: "/portal", label: "Home", icon: House },
+        { href: "/portal/book", label: "Book", icon: CalendarPlus },
+        { href: "/portal/visits", label: "My visits", icon: CalendarCheck2 },
         { href: "/portal/pets", label: "My pups", icon: PawPrint },
         { href: "/portal/intake", label: "Intake form", icon: ClipboardList },
-        { href: "/portal/book", label: "Book", icon: CalendarDays },
         { href: "/portal/payments", label: "Payments", icon: CreditCard },
         { href: "/portal/profile", label: "Profile", icon: User },
       ],
     },
   ],
   admin: [
-    { items: [{ href: "/admin", label: "Overview", icon: LayoutDashboard }] },
+    {
+      items: [
+        { href: "/admin", label: "Overview", icon: LayoutDashboard },
+        { href: "/admin/calendar", label: "Calendar", icon: CalendarDays },
+      ],
+    },
     {
       title: "Website",
       items: [
@@ -52,13 +61,18 @@ const NAV: Record<"portal" | "admin", NavGroup[]> = {
       title: "Business",
       items: [
         { href: "/admin/clients", label: "Clients", icon: Users },
-        { href: "/admin/bookings", label: "Bookings", icon: CalendarDays },
         { href: "/admin/messages", label: "Messages", icon: Inbox },
         { href: "/admin/payments", label: "Payments", icon: CreditCard },
         { href: "/admin/intake-form", label: "Intake form", icon: ClipboardList },
       ],
     },
-    { title: "Setup", items: [{ href: "/admin/integrations", label: "Integrations", icon: Plug }] },
+    {
+      title: "Setup",
+      items: [
+        { href: "/admin/schedule", label: "Schedule & availability", icon: Clock },
+        { href: "/admin/integrations", label: "Integrations", icon: Plug },
+      ],
+    },
   ],
 };
 

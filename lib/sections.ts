@@ -54,6 +54,12 @@ const intro: FieldDef = {
   help: "Leave a blank line between paragraphs. Start a line with “- ” for a bullet.",
 };
 
+export const DEFAULT_BOOKING_STEPS = [
+  { title: "Create your free account", body: "Add your pup’s info and tell us about your routine." },
+  { title: "Book a meet & greet", body: "Pick a time that works — we’ll come say hi and learn the ropes." },
+  { title: "Book walks anytime", body: "Choose a day and time window, or set up weekly walks. Change plans right from your portal." },
+];
+
 export const SECTION_TYPES: SectionTypeDef[] = [
   {
     type: "hero",
@@ -325,31 +331,31 @@ export const SECTION_TYPES: SectionTypeDef[] = [
   {
     type: "booking",
     label: "Online booking",
-    description: "Embeds your Calendly scheduler (set the link in Settings).",
+    description: "How booking works, with buttons to sign up or log in and book.",
     icon: "📅",
     fields: [
       eyebrow,
       heading,
       intro,
       {
-        key: "bookingUrl",
-        label: "Calendly link for this section (optional)",
-        type: "url",
-        help: "Leave empty to use the booking link from Settings.",
+        key: "steps",
+        label: "Steps",
+        type: "list",
+        itemLabel: "step",
+        fields: [
+          { key: "title", label: "Title", type: "text" },
+          { key: "body", label: "Text", type: "textarea" },
+        ],
       },
-      {
-        key: "fallbackText",
-        label: "Text when online booking isn’t set up",
-        type: "textarea",
-      },
+      { key: "buttonLabel", label: "Button text", type: "text", placeholder: "Book now" },
       background,
     ],
     defaults: {
       eyebrow: "Booking",
-      heading: "Book a time",
+      heading: "Booking is easy",
       intro: "",
-      bookingUrl: "",
-      fallbackText: "Online booking is coming soon — send us a message and we’ll get you scheduled.",
+      steps: DEFAULT_BOOKING_STEPS,
+      buttonLabel: "Get started",
       background: "white",
     },
   },

@@ -1,71 +1,75 @@
-import { CalendlyEmbed } from "@/components/calendly-embed";
+import { BookingWizard } from "@/components/booking/booking-wizard";
 import { PageTitle } from "@/components/dashboard/shell";
-import { BookingList } from "@/components/portal/booking-list";
 import { ButtonLink } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { requireUser } from "@/lib/auth";
-import { getServices, getSiteSettings } from "@/lib/content";
+import type { BookingPet } from "@/lib/booking";
+import { getBookingConfig } from "@/lib/booking-server";
+import { getForm } from "@/lib/content";
+import { todayIn } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
-import type { Booking } from "@/lib/types";
-import { safeHref } from "@/lib/utils";
+import type { FormAnswers, Service } from "@/lib/types";
 
-export default async function BookPage() {
-  const user = await requireUser();
+export default async function BookPage({ searchParams }: PageProps<"/portal/book">) {
+  const [user, sp] = await Promise.all([requireUser(), searchParams]);
   const supabase = await createClient();
-  const [settings, services, bookingsRes] = await Promise.all([
-    getSiteSettings(),
-    getServices(),
-    supabase.from("bookings").select("*").eq("user_id", user.id).order("start_time", { ascending: false }).limit(50),
+  const [config, servicesRes, petsRes, submissionRes, upcomingRes, form] = await Promise.all([
+    getBookingConfig(supabase),
+    supabase.from("services").select("*").eq("active", true).eq("bookable", true).order("position"),
+    supabase.from("pets").select("id, name, breed, photo_url").eq("owner_id", user.id).order("created_at"),
+    supabase.from("form_submissions").select("answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
+    supabase
+      .from("bookings")
+      .select("service_date, window_id, pets:booking_pets(pet_id)")
+      .eq("user_id", user.id)
+      .in("status", ["requested", "scheduled"])
+      .gte("service_date", todayIn("America/Los_Angeles")),
+    getForm("intake"),
   ]);
 
-  const now = new Date().getTime();
-  const bookings = (bookingsRes.data ?? []) as Booking[];
-  const upcoming = bookings
-    .filter((b) => new Date(b.start_time).getTime() >= now && b.status === "scheduled")
-    .reverse();
-  const past = bookings.filter((b) => !upcoming.includes(b));
-  const calendlyUrl = /^https:\/\/calendly\.com\//i.test(settings.bookingUrl) ? settings.bookingUrl : "";
-  const serviceLinks = services.filter((s) => s.booking_url);
+  const today = todayIn(config.settings.timezone);
+  const booked: Record<string, string[]> = {};
+  for (const b of upcomingRes.data ?? []) {
+    const key = `${b.service_date}:${b.window_id}`;
+    booked[key] = [...(booked[key] ?? []), ...((b.pets as { pet_id: string }[] | null) ?? []).map((p) => p.pet_id)];
+  }
+
+  const services = (servicesRes.data ?? []) as Service[];
+  const approved = user.isAdmin || user.profile.booking_approved;
 
   return (
     <>
-      <PageTitle title="Book a walk" description="Pick a time that works for you and your pup." />
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <div className="space-y-4">
-          {serviceLinks.length ? (
-            <Card>
-              <h2 className="mb-3 font-semibold">Book a specific service</h2>
-              <div className="flex flex-wrap gap-2">
-                {serviceLinks.map((s) => (
-                  <ButtonLink key={s.id} href={safeHref(s.booking_url)} target="_blank" rel="noreferrer" variant="outline" size="sm">
-                    {s.name}
-                  </ButtonLink>
-                ))}
-              </div>
-            </Card>
-          ) : null}
-          {calendlyUrl ? (
-            <CalendlyEmbed url={calendlyUrl} name={user.profile.full_name ?? ""} email={user.email} />
-          ) : (
-            <Notice tone="info" title="Online booking is coming soon">
-              In the meantime, send us a message or reach out on Instagram and we’ll get you on the schedule.
-            </Notice>
-          )}
-        </div>
-        <div className="space-y-6">
-          <Card>
-            <h2 className="mb-3 text-xl font-semibold">Upcoming</h2>
-            <BookingList bookings={upcoming} empty="No upcoming walks yet." />
-          </Card>
-          {past.length ? (
-            <Card>
-              <h2 className="mb-3 text-xl font-semibold">Past & canceled</h2>
-              <BookingList bookings={past.slice(0, 10)} empty="" />
-            </Card>
-          ) : null}
-        </div>
-      </div>
+      <PageTitle title="Book a visit" description="Pick a service, your pup and a time that works. It only takes a minute." />
+      {!config.settings.booking_enabled && !user.isAdmin ? (
+        <Notice tone="warning" title="Online booking is paused right now">
+          Send us a message and we’ll get you on the schedule.
+          <div className="mt-3">
+            <ButtonLink href="/contact" size="sm">
+              Message us
+            </ButtonLink>
+          </div>
+        </Notice>
+      ) : services.length === 0 ? (
+        <Notice tone="info" title="Nothing to book online yet">
+          We’re setting up online booking. Send us a message in the meantime!
+        </Notice>
+      ) : (
+        <BookingWizard
+          services={services}
+          pets={(petsRes.data ?? []) as BookingPet[]}
+          windows={config.windows.filter((w) => w.active)}
+          settings={config.settings}
+          today={today}
+          approved={approved}
+          intake={{
+            fields: form?.fields ?? [],
+            answers: (submissionRes.data?.answers as FormAnswers | undefined) ?? {},
+            serviceIds: (submissionRes.data?.service_ids as string[] | undefined) ?? [],
+          }}
+          initialServiceId={typeof sp.service === "string" ? sp.service : null}
+          booked={booked}
+        />
+      )}
     </>
   );
 }
