@@ -178,7 +178,9 @@ export function TimeGrid({
         if (commit && t && (t.col !== d.origCol || t.minute !== d.origMinute)) {
           const column = columns[t.col];
           const walkerId = column.walkerId && column.walkerId !== d.b.walker_id ? column.walkerId : undefined;
-          cal.move(d.b, { date: column.date, minute: t.minute, walkerId });
+          // A window visit dragged straight across keeps its window instead of getting a pinned time.
+          const keepWindow = t.minute === d.origMinute && d.b.arrival_time == null && d.b.window_id != null;
+          cal.move(d.b, { date: column.date, minute: keepWindow ? undefined : t.minute, walkerId });
         }
       }
       setDrag(null);

@@ -63,7 +63,10 @@ export function ServicesEditor({
           isLast={index === services.length - 1}
           onMove={(dir) => run(() => moveService(service.id, dir))}
           onDelete={() => {
-            if (confirm(`Delete “${service.name}”? Past bookings keep their details.`)) run(() => deleteService(service.id));
+            const q = questions[service.id];
+            const n = q ? q.once + q.each : 0;
+            if (confirm(`Delete “${service.name}”? Past bookings keep their details.${n ? ` Questions asked only for it will be removed too.` : ""}`))
+              run(() => deleteService(service.id));
           }}
           onSaved={(next) => setServices((all) => all.map((s) => (s.id === next.id ? next : s)))}
         />

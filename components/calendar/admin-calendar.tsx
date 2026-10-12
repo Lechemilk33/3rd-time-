@@ -414,7 +414,15 @@ export function AdminCalendar({
     return byWalker;
   }, [all]);
 
-  const markedDays = useMemo(() => new Set(bookings.filter((b) => b.status !== "canceled").map((b) => b.service_date)), [bookings]);
+  const markedDays = useMemo(() => {
+    const set = new Set<Ymd>();
+    for (const b of bookings) {
+      if (b.status === "canceled" || b.status === "declined") continue;
+      if (isMultiDay(b)) for (const d of daysBetween(b.service_date, b.end_date ?? b.service_date)) set.add(d);
+      else set.add(b.service_date);
+    }
+    return set;
+  }, [bookings]);
 
   let body: ReactNode;
   if (view === "week") {
@@ -483,7 +491,7 @@ export function AdminCalendar({
               <span className="min-w-0">
                 <span className="block truncate font-extrabold">{w.display_name}</span>
                 <span className="block text-xs font-bold text-ink-400">
-                  {n} visit{n === 1 ? "" : "s"}
+                  {n} booking{n === 1 ? "" : "s"}
                 </span>
               </span>
             </div>

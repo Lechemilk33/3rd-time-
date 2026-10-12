@@ -32,8 +32,9 @@ export default async function VisitsPage() {
   ]);
 
   const upcoming = normalizeBookings(upcomingRes.data);
-  const active = upcoming.filter((b) => b.status === "scheduled" || b.status === "requested");
-  const inactive = upcoming.filter((b) => !active.includes(b));
+  // Today's finished visits stay in the main list (marked Done); only canceled/declined move down.
+  const active = upcoming.filter((b) => b.status !== "canceled" && b.status !== "declined");
+  const inactive = upcoming.filter((b) => b.status === "canceled" || b.status === "declined");
   const past = normalizeBookings(pastRes.data);
   const walkers = Object.fromEntries(config.walkers.map((w) => [w.profile_id, { display_name: w.display_name, color: w.color }]));
   const common = {
@@ -65,7 +66,7 @@ export default async function VisitsPage() {
       )}
       {inactive.length ? (
         <section className="mt-10">
-          <h2 className="mb-3 text-xl font-semibold">Canceled</h2>
+          <h2 className="mb-3 text-xl font-semibold">Canceled or declined</h2>
           <VisitList visits={inactive} {...common} past />
         </section>
       ) : null}

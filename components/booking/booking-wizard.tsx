@@ -195,13 +195,18 @@ export function BookingWizard({
           ? when.days.length > 0
           : Boolean(when.date && when.checkOut);
   const nights = kind === "stay" && when.date && when.checkOut ? diffDays(when.checkOut, when.date) : 0;
-  const ready = Boolean(service && !needsQuestions && petIds.length && picked && dates.length);
+  const ready = Boolean(
+    service && !needsQuestions && petIds.length && petIds.length <= service.max_pets && picked && dates.length,
+  );
 
   function pickService(id: string | null) {
     setServiceId(id);
     setWhen(EMPTY);
     setRepeat(false);
     setResult(null);
+    // Keep the pups that still fit the new service.
+    const next = bookable.find((s) => s.id === id);
+    if (next) setPetIds((ids) => ids.slice(0, next.max_pets));
   }
 
   function reset() {
@@ -342,7 +347,7 @@ export function BookingWizard({
                 </div>
                 {service.max_pets < pets.length ? (
                   <p className="mt-3 text-sm text-ink-600">
-                    Up to {service.max_pets} pups per {ranged ? "booking" : "visit"}.
+                    Up to {plural(service.max_pets, "pup")} per {ranged ? "booking" : "visit"}.
                   </p>
                 ) : null}
               </>
@@ -378,6 +383,7 @@ export function BookingWizard({
               />
             ) : kind === "time" ? (
               <TimeSlotPicker
+                key={reload}
                 serviceId={service.id}
                 openDays={openDays}
                 today={today}
@@ -415,9 +421,9 @@ export function BookingWizard({
           </Step>
         ) : null}
 
-        {/* Details */}
-        {service && !needsQuestions && petIds.length && picked ? (
-          <Step n={n++} title={canRepeat ? "Make it a regular thing?" : "Anything else?"} done={false}>
+        {/* Details (kept mounted while the time is re-picked, so typed answers aren't lost) */}
+        {service && !needsQuestions && petIds.length ? (
+          <Step n={n++} title={canRepeat ? "Make it a regular thing?" : "Anything else?"} done={false} hidden={!picked}>
             <form id={FORM_ID} onSubmit={submit} className="space-y-5">
               {canRepeat ? (
                 <div className="space-y-4">
@@ -534,7 +540,7 @@ export function BookingWizard({
                 {total != null && total !== service.price_cents ? (
                   <span className="block font-semibold text-ink-600">
                     About {formatMoney(total)} for{" "}
-                    {kind === "stay" ? `${nights} nights` : `${dates.length} ${kind === "day" ? "days" : "visits"}`}
+                    {kind === "stay" ? plural(nights, "night") : plural(dates.length, kind === "day" ? "day" : "visit")}
                   </span>
                 ) : null}
               </Row>
@@ -603,12 +609,17 @@ function WhenSummary({
   );
 }
 
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
 function Step({
   n,
   title,
   done,
   summary,
   onEdit,
+  hidden,
   children,
 }: {
   n: number;
@@ -616,6 +627,7 @@ function Step({
   done: boolean;
   summary?: ReactNode;
   onEdit?: () => void;
+  hidden?: boolean;
   children: ReactNode;
 }) {
   if (done && summary) {
@@ -637,7 +649,7 @@ function Step({
     );
   }
   return (
-    <Card className="motion-safe:animate-[rise_200ms_ease-out]">
+    <Card className="motion-safe:animate-[rise_200ms_ease-out]" hidden={hidden}>
       <h2 className="mb-4 flex items-center gap-3 font-display text-xl font-semibold">
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sun text-base">{n}</span>
         {title}

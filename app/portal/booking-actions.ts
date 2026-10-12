@@ -6,7 +6,7 @@ import type { Availability, DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
-import { bookingQuestions, fieldsForService, missingMessage, readAnswers } from "@/lib/intake";
+import { bookingQuestions, fieldsForService, missingMessage, readAnswers, unansweredForService } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult, FormAnswers } from "@/lib/types";
 
@@ -66,8 +66,18 @@ export async function bookVisits(input: BookInput, answers?: FormData): Promise<
   const endDate = input.endDate && isYmd(input.endDate) ? input.endDate : null;
   const supabase = await createClient();
 
+  const [form, subRes] = await Promise.all([
+    getForm("intake"),
+    supabase.from("form_submissions").select("id, answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
+  ]);
+  const sub = subRes.data;
+
+  // The service's intake questions (asked once) have to be answered before booking it.
+  if (form && unansweredForService(form.fields, (sub?.answers as FormAnswers | undefined) ?? {}, input.serviceId).some((f) => f.required)) {
+    return { ok: false, error: "Please answer the questions for this service first — reload the page to see them." };
+  }
+
   // Questions asked on every booking of this service.
-  const form = await getForm("intake");
   const questions = form ? bookingQuestions(form.fields, input.serviceId) : [];
   let saved: FormAnswers | null = null;
   if (questions.length) {
@@ -89,12 +99,6 @@ export async function bookVisits(input: BookInput, answers?: FormData): Promise<
   if (error) return { ok: false, error: rpcError(error) };
 
   // Remember the service on their profile (no-op if they don't have an intake yet).
-  const { data: sub } = await supabase
-    .from("form_submissions")
-    .select("id, service_ids")
-    .eq("form_slug", "intake")
-    .eq("user_id", user.id)
-    .maybeSingle();
   if (sub && !(sub.service_ids as string[]).includes(input.serviceId)) {
     await supabase
       .from("form_submissions")

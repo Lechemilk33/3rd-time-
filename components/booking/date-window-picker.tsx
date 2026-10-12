@@ -53,13 +53,13 @@ export function DateWindowPicker({
         loading={loading}
         look={(d) => {
           const rows = byDay.get(d) ?? [];
-          const open = rows.some((r) => r.remaining > 0);
+          // Open = a window with room that the pup isn't already booked in.
+          const open = rows.some((r) => r.remaining > 0 && !blocked?.has(`${d}:${r.window_id}`));
           return { enabled: open, open, full: rows.length > 0 && !open, selected: d === date };
         }}
         onPick={(d) => {
-          const rows = byDay.get(d) ?? [];
-          const firstWindow = rows.find((r) => r.remaining > 0)?.window_id ?? null;
-          onChange(d, rows.some((r) => r.window_id === windowId && r.remaining > 0) ? windowId : firstWindow);
+          const usable = (byDay.get(d) ?? []).filter((r) => r.remaining > 0 && !blocked?.has(`${d}:${r.window_id}`));
+          onChange(d, usable.some((r) => r.window_id === windowId) ? windowId : (usable[0]?.window_id ?? null));
         }}
       />
 

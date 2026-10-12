@@ -10,7 +10,7 @@ import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { todayIn } from "@/lib/dates";
-import { unansweredForService } from "@/lib/intake";
+import { missingRequired, unansweredForService } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
 import type { FormAnswers, Pet, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -61,7 +61,8 @@ export default async function PortalHome() {
     },
     { done: pets.length > 0, title: "Add your pup", body: "Photos, quirks and vet info.", href: "/portal/pets/new" },
     {
-      done: Boolean(intakeRes.data),
+      // Answering one service's questions creates the record too, so check the required ones are done.
+      done: Boolean(intakeRes.data) && missingRequired(fields, answers, [...myServiceIds]).length === 0,
       title: "Fill out the intake form",
       body: "Routines, access and emergencies.",
       href: "/portal/intake",

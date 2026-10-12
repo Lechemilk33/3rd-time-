@@ -433,7 +433,7 @@ function ArrivalEditor({
       >
         Pin time
       </Button>
-      {current != null && booking.window_id ? (
+      {current != null && booking.window_id && booking.kind !== "time" ? (
         <Button
           size="sm"
           variant="ghost"
@@ -546,7 +546,7 @@ function MovePanel({
   const [date, setDate] = useState(booking.service_date);
   const [checkOut, setCheckOut] = useState(booking.end_date ?? booking.service_date);
   const [windowId, setWindowId] = useState(booking.window_id ?? (windows[0]?.id ?? ""));
-  const [time, setTime] = useState(kind === "time" && pinned != null ? minutesToTimeInput(pinned) : "");
+  const [time, setTime] = useState(pinned != null ? minutesToTimeInput(pinned) : "");
   const [walkerId, setWalkerId] = useState(booking.walker_id ?? "");
   const [notify, setNotify] = useState(true);
   const minute = time ? timeToMinutes(`${time}:00`) : null;

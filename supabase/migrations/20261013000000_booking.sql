@@ -548,6 +548,12 @@ begin
       return 'full';
     end if;
   end loop;
+  if p_service.kind = 'stay' and exists (
+    select 1 from public.time_off t
+    where t.walker_id is null and t.window_id is null and p_end between t.start_date and t.end_date
+  ) then
+    return 'closed';
+  end if;
   return null;
 end;
 $$;
@@ -638,6 +644,7 @@ declare
 begin
   select * into s from public.booking_settings where id = 1;
   if p_window.id is null or not p_window.active then return 'closed'; end if;
+  if p_minute < p_window.start_minute or p_minute + p_duration > p_window.end_minute then return 'closed'; end if;
   if private.local_ts(p_date, p_minute) < now() + make_interval(hours => s.min_notice_hours) then return 'too_soon'; end if;
   if p_date > private.local_today() + s.max_days_ahead then return 'too_far'; end if;
   if private.pick_walker_at(p_date, p_window.id, null, p_minute, p_duration, p_exclude) is null then
@@ -916,6 +923,8 @@ declare
   v_heading text;
   v_intro text;
   v_what text;
+  v_noun text;
+  v_nouns text;
   v_reason text := nullif(trim(coalesce(p_reason, '')), '');
 begin
   if p_ids is null or cardinality(p_ids) = 0 then return; end if;
@@ -939,10 +948,12 @@ begin
       into v_first
       from public.bookings b cross join lateral private.visit_when(b.id) vw
       where b.id = c.ids[1];
+      v_noun := case v_first.kind when 'stay' then 'stay' when 'day' then 'day' else 'visit' end;
+      v_nouns := case v_first.kind when 'stay' then 'stays' when 'day' then 'days' else 'visits' end;
       v_what := case
         when v_n = 1 and v_first.kind = 'stay' then v_first.title || ' from ' || v_first.short_day
         when v_n = 1 then v_first.title || ' on ' || v_first.short_day
-        else v_n || ' visits starting ' || v_first.short_day end;
+        else v_n || ' ' || v_nouns || ' starting ' || v_first.short_day end;
 
       case p_event
         when 'booked' then
@@ -965,19 +976,22 @@ begin
         when 'declined' then
           v_subject := 'About your request for ' || v_first.short_day;
           v_heading := 'We can’t make this one work';
-          v_intro := 'Sorry, ' || c.first_name || ' — we’re not able to take this visit. Reply to this email and we’ll find another time.';
+          v_intro := 'Sorry, ' || c.first_name || ' — we’re not able to take this ' || v_noun || '. Reply to this email and we’ll find another time.';
         when 'canceled' then
           v_subject := 'Canceled: ' || v_what;
-          v_heading := 'Visit canceled';
+          v_heading := initcap(v_noun) || ' canceled';
           v_intro := case when p_by_admin
-            then 'Hi ' || c.first_name || ', we had to cancel ' || case when v_n = 1 then 'this visit.' else 'these visits.' end
-            else 'You’re all set, ' || c.first_name || ' — ' || case when v_n = 1 then 'this visit is' else 'these visits are' end || ' canceled.' end;
+            then 'Hi ' || c.first_name || ', we had to cancel ' || case when v_n = 1 then 'this ' || v_noun else 'these ' || v_nouns end || '.'
+            else 'You’re all set, ' || c.first_name || ' — ' || case when v_n = 1 then 'this ' || v_noun || ' is' else 'these ' || v_nouns || ' are' end || ' canceled.' end;
         when 'moved' then
           v_subject := 'Updated: ' || v_what;
-          v_heading := 'New time ✨';
+          v_heading := case when v_first.kind = 'stay' then 'New dates ✨' else 'New time ✨' end;
           v_intro := case when p_by_admin
-            then 'Hi ' || c.first_name || ', we updated the time for this visit.'
-            else 'You’re all set, ' || c.first_name || ' — here’s the new time.' end;
+            then 'Hi ' || c.first_name || ', we updated the ' || case when v_first.kind = 'stay' then 'dates' else 'time' end
+                 || ' for this ' || v_noun || '.'
+            else 'You’re all set, ' || c.first_name || ' — here’s the new '
+                 || case when v_first.kind = 'stay' then 'plan.' else 'time.' end end
+            || case when c.any_requested then ' We’ll confirm it shortly.' else '' end;
         else
           continue;
       end case;
@@ -1004,7 +1018,7 @@ begin
 
     if cardinality(v_admins) > 0 then
       v_n := cardinality(p_ids);
-      select b.id, b.title, b.status, b.service_date, private.pet_names(b.id) as pets, vw.short_day,
+      select b.id, b.title, b.kind, b.status, b.service_date, private.pet_names(b.id) as pets, vw.short_day,
              coalesce(p.full_name, p.email, b.invitee_name, 'A client') as client_name
       into v_first
       from public.bookings b
@@ -1014,8 +1028,10 @@ begin
       order by b.service_date, b.start_time
       limit 1;
 
+      v_noun := case v_first.kind when 'stay' then 'stay' when 'day' then 'day' else 'visit' end;
+      v_nouns := case v_first.kind when 'stay' then 'stays' when 'day' then 'days' else 'visits' end;
       v_what := coalesce(v_first.pets, v_first.title) || ' · '
-        || case when v_n = 1 then v_first.short_day else v_n || ' visits from ' || v_first.short_day end;
+        || case when v_n = 1 then v_first.short_day else v_n || ' ' || v_nouns || ' from ' || v_first.short_day end;
 
       case p_event
         when 'booked' then
@@ -1030,12 +1046,14 @@ begin
           end if;
         when 'canceled' then
           v_subject := 'Canceled by ' || v_first.client_name || ': ' || v_what;
-          v_heading := 'Visit canceled';
-          v_intro := v_first.client_name || ' canceled ' || case when v_n = 1 then 'this visit.' else 'these visits.' end;
+          v_heading := initcap(v_noun) || ' canceled';
+          v_intro := v_first.client_name || ' canceled ' || case when v_n = 1 then 'this ' || v_noun else 'these ' || v_nouns end || '.';
         when 'moved' then
           v_subject := 'Rescheduled: ' || v_what;
-          v_heading := 'Visit rescheduled';
-          v_intro := v_first.client_name || ' moved this visit to a new time.';
+          v_heading := initcap(v_noun) || ' rescheduled';
+          v_intro := v_first.client_name || ' moved this ' || v_noun || ' to '
+            || case when v_first.kind = 'stay' then 'new dates.' else 'a new time.' end
+            || case when v_first.status = 'requested' then ' It needs your OK again.' else '' end;
       end case;
 
       v_emails := v_emails || private.email(
@@ -1276,7 +1294,8 @@ begin
   end if;
   if v_kind in ('window', 'time') then
     if v_kind = 'time' and p_arrival_minute is null then raise exception 'Pick a time.'; end if;
-    if p_window_id is null and p_arrival_minute is not null then
+    -- Clients' appointments always count against the window their start time is in.
+    if p_arrival_minute is not null and (p_window_id is null or (v_kind = 'time' and not v_admin)) then
       p_window_id := private.window_containing(p_arrival_minute);
     end if;
     if p_window_id is not null then
@@ -1531,11 +1550,15 @@ begin
   select * into b from public.bookings where id = p_booking_id;
   if not found then raise exception 'Visit not found.'; end if;
 
+  -- The clicked booking can come from any of v_from. The rest of its series only moves from
+  -- requested (or scheduled, when marking done), so canceled visits never come back on their own.
   v_ids := array(
     select x.id from public.bookings x
-    where x.status = any (v_from)
-      and (x.id = b.id or (p_scope = 'following' and b.series_id is not null
-                           and x.series_id = b.series_id and x.service_date >= b.service_date))
+    where (x.id = b.id and x.status = any (v_from))
+       or (p_scope = 'following' and b.series_id is not null and x.id <> b.id
+           and x.series_id = b.series_id and x.service_date >= b.service_date
+           and x.status = any (case when p_status = 'completed'
+                                 then array['scheduled', 'requested'] else array['requested'] end))
   );
   if cardinality(v_ids) = 0 then return 0; end if;
 
@@ -1608,6 +1631,9 @@ begin
   select * into v_service from public.services where id = b.service_id;
 
   if not v_admin then
+    if not s.booking_enabled then
+      raise exception 'Online booking is paused right now — please message us to make changes.';
+    end if;
     if b.status not in ('requested', 'scheduled') then raise exception 'This visit can’t be changed anymore.'; end if;
     if p_walker_id is not null or (p_arrival_minute is not null and b.kind <> 'time') then
       raise exception 'Only the Waiting for Paws team can do that.';
@@ -1653,13 +1679,13 @@ begin
     v_arrival := null;
     v_start := private.local_ts(p_date, private.local_minute(b.start_time));
     v_end := private.local_ts(v_last, private.local_minute(b.end_time));
-    v_walker := coalesce(p_walker_id,
+    -- Admins keep whoever is assigned (even nobody); clients keep their walker if free, else the next best.
+    v_walker := case when v_admin then coalesce(p_walker_id, b.walker_id) else coalesce(
       case when b.walker_id is not null and not exists (
           select 1 from public.time_off t
           where t.walker_id = b.walker_id and t.window_id is null and t.start_date <= v_last and t.end_date >= p_date
         ) then b.walker_id end,
-      case when v_admin then b.walker_id end,
-      private.pick_walker_range(p_date, v_last, b.user_id, b.id));
+      private.pick_walker_range(p_date, v_last, b.user_id, b.id)) end;
   elsif not v_admin then
     v_last := p_date;
     if b.kind = 'time' then
@@ -1677,15 +1703,6 @@ begin
         when 'too_far' then 'That’s further out than we book.'
         when 'closed' then 'We’re not taking visits at that time.'
         else 'Sorry — that time is full. Please pick another.' end;
-    end if;
-    if exists (
-      select 1 from public.bookings x
-      join public.booking_pets bp on bp.booking_id = x.id
-      where bp.pet_id in (select pet_id from public.booking_pets where booking_id = b.id)
-        and x.id <> b.id and x.service_date = p_date and x.window_id = v_window.id and x.kind = b.kind
-        and x.status in ('requested', 'scheduled')
-    ) then
-      raise exception 'Your pup already has a visit at that time.';
     end if;
     if b.kind = 'time' then
       v_walker := private.pick_walker_at(p_date, v_window.id, b.user_id, p_arrival_minute, b.duration_minutes, b.id);
@@ -1736,6 +1753,17 @@ begin
       v_start := private.local_ts(p_date, coalesce((extract(epoch from v_arrival) / 60)::int, v_window.start_minute));
       v_end := v_start + make_interval(mins => b.duration_minutes);
     end if;
+    -- The same pup can't be in two places at once (same rule as book_visits).
+    if not v_admin and exists (
+      select 1 from public.bookings x
+      join public.booking_pets bp on bp.booking_id = x.id
+      where bp.pet_id in (select pet_id from public.booking_pets where booking_id = b.id)
+        and x.id <> b.id and x.status in ('requested', 'scheduled')
+        and x.service_date = p_date and x.kind in ('window', 'time')
+        and x.start_time < v_end and v_start < x.end_time
+    ) then
+      raise exception 'Your pup already has a visit at that time.';
+    end if;
   end if;
 
   v_changed := p_date is distinct from b.service_date or v_last is distinct from b.end_date
@@ -1750,6 +1778,8 @@ begin
       start_time = v_start,
       end_time = v_end,
       walker_id = v_walker,
+      -- A client moving something that needs approval sends it back for approval.
+      status = case when not v_admin and v_changed and v_service.confirmation = 'request' then 'requested' else status end,
       reminder_sent_at = case when p_date is distinct from b.service_date then null else reminder_sent_at end
   where id = b.id;
 
@@ -1962,7 +1992,8 @@ begin
     from public.walkers w
     join public.profiles p on p.id = w.profile_id
     join public.bookings b on b.walker_id = w.profile_id
-    where b.service_date = p_date and b.status in ('scheduled', 'requested') and p.email is not null
+    where b.service_date <= p_date and b.end_date >= p_date
+      and b.status in ('scheduled', 'requested') and p.email is not null
       and not exists (select 1 from private.digest_log d where d.walker_id = w.profile_id and d.service_date = p_date)
     group by w.profile_id, w.display_name, p.email
   loop

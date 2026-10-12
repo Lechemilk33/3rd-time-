@@ -1,6 +1,7 @@
 "use server";
 
 import type { ActionResult, FormDefinition, FormField, FormFieldType, GalleryPhoto, PriceUnit, Service, ServiceKind } from "@/lib/types";
+import { serviceEndMinute, serviceStartMinute } from "@/lib/booking";
 import { MEDIA_BUCKET } from "@/lib/media";
 import { adminClient, clampText, publishContentChange } from "./shared";
 
@@ -106,7 +107,7 @@ export async function createService(kind: ServiceKind = "window"): Promise<Servi
 export async function saveService(id: string, input: ServiceInput): Promise<ActionResult & { service?: Service }> {
   const supabase = await adminClient();
   const clean = cleanService(input);
-  if (clean.kind === "day" && clean.start_minute != null && clean.end_minute != null && clean.end_minute <= clean.start_minute) {
+  if (clean.kind === "day" && serviceEndMinute(clean) <= serviceStartMinute(clean)) {
     return { ok: false, error: "Pick-up has to be after drop-off." };
   }
   const { data, error } = await supabase.from("services").update(clean).eq("id", id).select("*").single();
@@ -132,6 +133,17 @@ export async function deleteService(id: string): Promise<ServicesResult> {
   const supabase = await adminClient();
   const { error } = await supabase.from("services").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
+
+  // Questions that were only for this service go with it; others just stop mentioning it.
+  const { data: form } = await supabase.from("forms").select("fields").eq("slug", "intake").maybeSingle<{ fields: FormField[] }>();
+  if (form?.fields?.some((f) => f.services?.includes(id))) {
+    const fields = form.fields.flatMap((f) => {
+      if (!f.services?.includes(id)) return [f];
+      const rest = f.services.filter((s) => s !== id);
+      return rest.length ? [{ ...f, services: rest }] : [];
+    });
+    await supabase.from("forms").update({ fields }).eq("slug", "intake");
+  }
   publishContentChange();
   return { ok: true, services: await listServices(supabase) };
 }
@@ -239,6 +251,8 @@ export async function saveForm(input: FormDefinition): Promise<ActionResult> {
       : undefined;
     if (needsOptions && !options?.length) return { ok: false, error: `“${label}” needs at least one choice.` };
     const services = (f.services ?? []).filter((s) => serviceIds.has(s));
+    // Only for services that no longer exist: don't let it turn into a question for everyone.
+    if (f.services?.length && !services.length) continue;
     fields.push({
       id,
       type: f.type,

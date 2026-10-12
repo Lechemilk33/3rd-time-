@@ -9,6 +9,10 @@ import type { Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MonthGrid } from "./month-grid";
 
+function nightsLabel(n: number) {
+  return `${n} night${n === 1 ? "" : "s"}`;
+}
+
 function spotsNote(a: DayAvailability | undefined) {
   if (!a || a.capacity >= UNLIMITED) return undefined;
   return a.remaining > 0 && a.remaining <= 2 && a.remaining < a.capacity ? `${a.remaining} left` : undefined;
@@ -39,7 +43,12 @@ export function StayPicker({
   const byDay = useMemo(() => new Map(days.map((d) => [d.service_date, d])), [days]);
   const lastDay = useMemo(() => days.reduce<Ymd>((max, d) => (d.service_date > max ? d.service_date : max), addDays(today, 30)), [days, today]);
   const nightOpen = (d: Ymd) => (byDay.get(d)?.remaining ?? 0) > 0;
-  const canCheckIn = (d: Ymd) => d <= lastStart && nightOpen(d);
+  // A check-in only works if the shortest allowed stay fits from there.
+  const canCheckIn = (d: Ymd) => {
+    if (d > lastStart) return false;
+    for (let i = 0; i < Math.max(1, service.min_nights); i++) if (!nightOpen(addDays(d, i))) return false;
+    return true;
+  };
 
   /** Furthest valid check-out from this check-in (every night open, up to max nights). */
   const maxOut = useMemo(() => {
@@ -79,7 +88,7 @@ export function StayPicker({
             selected: isStart && !end,
             inRange: between,
             note: picking ? undefined : spotsNote(a),
-            label: `${longDate(d)}${picking && canCheckOut(d) ? ` — check out (${diffDays(d, checkIn!)} nights)` : ""}`,
+            label: `${longDate(d)}${picking && canCheckOut(d) ? ` — check out (${nightsLabel(diffDays(d, checkIn!))})` : ""}`,
           };
         }}
         onPick={(d) => {
@@ -114,8 +123,10 @@ export function StayPicker({
                 ? "Tap your check-in date."
                 : "No open nights right now — send us a message!"
               : !end
-                ? `Now tap check-out. Stays are ${service.min_nights === service.max_nights ? service.min_nights : `${service.min_nights}–${service.max_nights}`} nights.`
-                : `${nights} night${nights === 1 ? "" : "s"} · ${shortDate(checkIn)} → ${shortDate(end)}`}
+                ? `Now tap check-out. Stays are ${
+                    service.min_nights === service.max_nights ? nightsLabel(service.min_nights) : `${service.min_nights}–${service.max_nights} nights`
+                  }.`
+                : `${nightsLabel(nights)} · ${shortDate(checkIn)} → ${shortDate(end)}`}
         </p>
       </div>
     </div>

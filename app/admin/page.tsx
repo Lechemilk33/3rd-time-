@@ -19,7 +19,7 @@ export default async function AdminHome() {
   const tz = config.settings.timezone;
   const today = todayIn(tz);
 
-  const [clients, intake, messages, todayRes, tomorrowRes, requestsRes, capacityRes, emailRes, settings] = await Promise.all([
+  const [clients, intake, messages, todayRes, tomorrowRes, requestsRes, requestCount, capacityRes, emailRes, settings] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "client"),
     supabase.from("form_submissions").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase.from("contact_messages").select("id", { count: "exact", head: true }).eq("handled", false),
@@ -43,6 +43,7 @@ export default async function AdminHome() {
       .gte("service_date", today)
       .order("start_time")
       .limit(6),
+    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "requested").gte("service_date", today),
     supabase.from("walker_availability").select("walker_id", { count: "exact", head: true }).gt("capacity", 0),
     supabase.rpc("email_status"),
     getSiteSettings(),
@@ -50,11 +51,13 @@ export default async function AdminHome() {
 
   const todays = normalizeBookings(todayRes.data);
   const requests = normalizeBookings(requestsRes.data);
-  const calendarHref = (b: { id: string; service_date: string }) => `/admin/calendar?view=day&date=${b.service_date}&b=${b.id}`;
+  const pending = requestCount.count ?? requests.length;
+  // Stays that started earlier still open on today's day view.
+  const calendarHref = (b: { id: string }) => `/admin/calendar?view=day&date=${today}&b=${b.id}`;
 
   const stats = [
-    { label: "Visits today", value: todays.length, href: `/admin/calendar?view=day&date=${today}`, icon: <CalendarDays className="size-5" /> },
-    { label: "Requests to confirm", value: requests.length, href: "/admin/calendar", icon: <Hourglass className="size-5" />, hot: requests.length > 0 },
+    { label: "On today", value: todays.length, href: `/admin/calendar?view=day&date=${today}`, icon: <CalendarDays className="size-5" /> },
+    { label: "Requests to confirm", value: pending, href: "/admin/calendar", icon: <Hourglass className="size-5" />, hot: pending > 0 },
     { label: "Clients", value: clients.count ?? 0, href: "/admin/clients", icon: <Users className="size-5" /> },
     { label: "New messages", value: messages.count ?? 0, href: "/admin/messages", icon: <Inbox className="size-5" /> },
   ];
@@ -71,7 +74,7 @@ export default async function AdminHome() {
     <>
       <PageTitle
         title={`Hi ${(admin.profile.full_name ?? "").split(" ")[0] || "there"}! 🐾`}
-        description={`${longDate(today)} · ${todays.length ? `${todays.length} visit${todays.length === 1 ? "" : "s"} today` : "No visits today"}${tomorrowRes.count ? ` · ${tomorrowRes.count} tomorrow` : ""}`}
+        description={`${longDate(today)} · ${todays.length ? `${todays.length} booking${todays.length === 1 ? "" : "s"} today` : "Nothing booked today"}${tomorrowRes.count ? ` · ${tomorrowRes.count} tomorrow` : ""}`}
         actions={
           <>
             <ButtonLink href="/admin/calendar">Open calendar</ButtonLink>
