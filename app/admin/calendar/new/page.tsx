@@ -5,16 +5,18 @@ import { AdminBookingForm } from "@/components/booking/admin-booking-form";
 import type { PickerClient } from "@/components/booking/client-picker";
 import { PageTitle } from "@/components/dashboard/shell";
 import { getBookingConfig } from "@/lib/booking-server";
+import { getForm } from "@/lib/content";
 import { isYmd, todayIn } from "@/lib/dates";
 import type { Service } from "@/lib/types";
 
 export default async function NewBookingPage({ searchParams }: PageProps<"/admin/calendar/new">) {
   const [{ supabase }, sp] = await Promise.all([adminData(), searchParams]);
-  const [config, profilesRes, petsRes, servicesRes] = await Promise.all([
+  const [config, profilesRes, petsRes, servicesRes, form] = await Promise.all([
     getBookingConfig(supabase),
     supabase.from("profiles").select("id, full_name, email, phone, address, booking_approved, role").order("full_name"),
     supabase.from("pets").select("id, owner_id, name, breed, photo_url").order("name"),
     supabase.from("services").select("*").order("position"),
+    getForm("intake"),
   ]);
 
   const petsByOwner = new Map<string, PickerClient["pets"]>();
@@ -33,7 +35,7 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
       <Link href="/admin/calendar" className="mb-4 inline-flex items-center gap-1 text-sm font-bold text-ocean hover:underline">
         <ArrowLeft className="size-4" aria-hidden /> Calendar
       </Link>
-      <PageTitle title="New booking" description="Book a visit for a client. Search by pup, owner, phone, email or address." />
+      <PageTitle title="New booking" description="Book a walk, appointment, day or stay for a client. Search by pup, owner, phone, email or address." />
       <AdminBookingForm
         clients={clients}
         services={((servicesRes.data ?? []) as Service[]).filter((s) => s.active || s.bookable)}
@@ -45,7 +47,9 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
           minute: Number.isInteger(minute) && minute >= 0 && minute < 1440 ? minute : null,
           walkerId: walker,
           clientId: client,
+          serviceId: typeof sp.service === "string" ? sp.service : null,
         }}
+        intakeFields={form?.fields ?? []}
       />
     </>
   );

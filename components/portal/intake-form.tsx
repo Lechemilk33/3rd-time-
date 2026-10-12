@@ -7,7 +7,7 @@ import { DynamicFormFields } from "@/components/forms/dynamic-form-fields";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { formatDuration, formatPrice } from "@/lib/format";
+import { servicePrice, serviceTiming } from "@/lib/booking";
 import { visibleFields } from "@/lib/intake";
 import type { FormAnswers, FormField, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,10 @@ export function IntakeForm({
 }: {
   fields: FormField[];
   answers: FormAnswers;
-  services: Pick<Service, "id" | "name" | "description" | "price_cents" | "price_label" | "duration_minutes">[];
+  services: Pick<
+    Service,
+    "id" | "name" | "description" | "price_cents" | "price_label" | "price_unit" | "duration_minutes" | "kind" | "start_minute" | "end_minute"
+  >[];
   selectedServiceIds: string[];
   submitted: boolean;
 }) {
@@ -70,7 +73,7 @@ export function IntakeForm({
                   <span className="min-w-0">
                     <span className="block font-extrabold">{s.name}</span>
                     <span className="block text-sm text-ink-600">
-                      {[formatDuration(s.duration_minutes), formatPrice(s.price_cents, s.price_label)].filter(Boolean).join(" · ")}
+                      {[serviceTiming(s), servicePrice(s)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                 </label>

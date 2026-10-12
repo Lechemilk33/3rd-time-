@@ -9,13 +9,6 @@ export function formatMoney(cents: number | null | undefined, currency = "usd") 
   }).format(cents / 100);
 }
 
-export function formatPrice(cents: number | null, label?: string | null) {
-  if (cents == null) return label || "";
-  if (cents === 0) return "Free";
-  const money = formatMoney(cents);
-  return label ? `${money} ${label}` : money;
-}
-
 export function formatDuration(minutes: number | null) {
   if (!minutes) return "";
   if (minutes < 60) return `${minutes} min`;

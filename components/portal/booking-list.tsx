@@ -6,6 +6,7 @@ import {
   clientName,
   petNames,
   STATUS_META,
+  dateSpanLabel,
   visitTimeLabel,
   type BookingDetail,
   type BookingWindow,
@@ -55,7 +56,7 @@ export function BookingList({
                 {b.title}
               </p>
               <p className="truncate text-sm text-ink-600">
-                {shortDate(b.service_date)} · {visitTimeLabel(b, windowMap, timeZone)}
+                {b.kind === "stay" ? dateSpanLabel(b) : shortDate(b.service_date)} · {visitTimeLabel(b, windowMap, timeZone)}
                 {showClient && b.pets.length ? ` · ${clientName(b)}` : ""}
               </p>
             </div>

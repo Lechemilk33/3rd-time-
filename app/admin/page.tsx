@@ -26,13 +26,15 @@ export default async function AdminHome() {
     supabase
       .from("bookings")
       .select(BOOKING_DETAIL_SELECT)
-      .eq("service_date", today)
+      .lte("service_date", today)
+      .gte("end_date", today)
       .in("status", ["scheduled", "requested", "completed"])
       .order("start_time"),
     supabase
       .from("bookings")
       .select("id", { count: "exact", head: true })
-      .eq("service_date", addDays(today, 1))
+      .lte("service_date", addDays(today, 1))
+      .gte("end_date", addDays(today, 1))
       .in("status", ["scheduled", "requested"]),
     supabase
       .from("bookings")

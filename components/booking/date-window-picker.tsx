@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { windowRange, type Availability, type BookingWindow } from "@/lib/booking";
-import { addDays, addMonths, daysBetween, formatYmd, longDate, startOfMonth, startOfWeek, type Ymd } from "@/lib/dates";
+import { longDate, type Ymd } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { MonthGrid } from "./month-grid";
 
 /**
  * Month calendar with open days marked, then the arrival windows for the picked day.
@@ -41,88 +41,27 @@ export function DateWindowPicker({
     () => [...byDay.entries()].filter(([, rows]) => rows.some((r) => r.remaining > 0)).map(([d]) => d).sort()[0],
     [byDay],
   );
-  const [month, setMonth] = useState<Ymd>(startOfMonth(date ?? firstOpen ?? today));
-  const from = startOfWeek(month);
-  const days = daysBetween(from, addDays(from, 41));
-  const canPrev = month > startOfMonth(today);
-  const canNext = addMonths(month, 1) <= lastDay;
   const dayRows = date ? (byDay.get(date) ?? []) : [];
   const windowsById = new Map(windows.map((w) => [w.id, w]));
 
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,20rem)_1fr]">
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <button
-            type="button"
-            disabled={!canPrev}
-            onClick={() => setMonth(addMonths(month, -1))}
-            className="grid size-9 place-items-center rounded-full hover:bg-sea-50 disabled:opacity-30"
-            aria-label="Previous month"
-          >
-            <ChevronLeft className="size-5" />
-          </button>
-          <p className="font-display text-lg font-semibold">{formatYmd(month, { month: "long", year: "numeric" })}</p>
-          <button
-            type="button"
-            disabled={!canNext}
-            onClick={() => setMonth(addMonths(month, 1))}
-            className="grid size-9 place-items-center rounded-full hover:bg-sea-50 disabled:opacity-30"
-            aria-label="Next month"
-          >
-            <ChevronRight className="size-5" />
-          </button>
-        </div>
-        <div className="grid grid-cols-7 text-center text-[11px] font-extrabold tracking-wide text-ink-400 uppercase">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-            <span key={d} className="py-1">
-              {d.charAt(0)}
-            </span>
-          ))}
-        </div>
-        <div className={cn("grid grid-cols-7 gap-1", loading && "animate-pulse")}>
-          {days.map((d) => {
-            const rows = byDay.get(d) ?? [];
-            const open = rows.some((r) => r.remaining > 0);
-            const full = rows.length > 0 && !open;
-            const inMonth = d.startsWith(month.slice(0, 7));
-            const selected = d === date;
-            return (
-              <button
-                key={d}
-                type="button"
-                disabled={!open}
-                onClick={() => {
-                  const firstWindow = rows.find((r) => r.remaining > 0)?.window_id ?? null;
-                  onChange(d, rows.some((r) => r.window_id === windowId && r.remaining > 0) ? windowId : firstWindow);
-                }}
-                aria-label={`${longDate(d)}${open ? "" : full ? " (full)" : " (unavailable)"}`}
-                aria-pressed={selected}
-                className={cn(
-                  "relative grid aspect-square place-items-center rounded-xl text-sm font-bold transition",
-                  !inMonth && "opacity-40",
-                  open && !selected && "bg-sea-50 text-ink hover:bg-sea-100",
-                  !open && "cursor-not-allowed text-ink-200",
-                  full && "line-through",
-                  selected && "bg-ink text-white shadow-md",
-                  d === today && !selected && "ring-2 ring-sun",
-                )}
-              >
-                {Number(d.slice(8))}
-                {open && !selected ? <span className="absolute bottom-1 size-1 rounded-full bg-ocean" aria-hidden /> : null}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-3 flex items-center gap-3 text-xs font-semibold text-ink-400">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-3 rounded bg-sea-50" /> Open
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-3 rounded ring-2 ring-sun" /> Today
-          </span>
-        </p>
-      </div>
+      <MonthGrid
+        today={today}
+        initialMonth={date ?? firstOpen ?? today}
+        lastDay={lastDay}
+        loading={loading}
+        look={(d) => {
+          const rows = byDay.get(d) ?? [];
+          const open = rows.some((r) => r.remaining > 0);
+          return { enabled: open, open, full: rows.length > 0 && !open, selected: d === date };
+        }}
+        onPick={(d) => {
+          const rows = byDay.get(d) ?? [];
+          const firstWindow = rows.find((r) => r.remaining > 0)?.window_id ?? null;
+          onChange(d, rows.some((r) => r.window_id === windowId && r.remaining > 0) ? windowId : firstWindow);
+        }}
+      />
 
       <div>
         {date ? (

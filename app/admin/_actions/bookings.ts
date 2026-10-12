@@ -1,8 +1,11 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { isYmd } from "@/lib/dates";
+import type { DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
+import { getForm } from "@/lib/content";
+import { isYmd } from "@/lib/dates";
+import { bookingQuestions, readAnswers } from "@/lib/intake";
 import type { ActionResult } from "@/lib/types";
 import { adminClient, clampText } from "./shared";
 
@@ -20,6 +23,8 @@ export type CreateBookingsInput = {
   dates: string[];
   windowId: string | null;
   arrivalMinute: number | null;
+  /** Overnight stays: check-out date. */
+  endDate?: string | null;
   walkerId: string | null;
   note: string;
   force: boolean;
@@ -27,13 +32,17 @@ export type CreateBookingsInput = {
 };
 
 export type CreateBookingsResult = ActionResult & {
-  created?: { id: string; date: string }[];
+  created?: { id: string; date: string; end_date: string }[];
   skipped?: { date: string; reason: string }[];
 };
 
-export async function createBookings(input: CreateBookingsInput): Promise<CreateBookingsResult> {
+/** `answers` carries the service's "every booking" questions (optional for admins). */
+export async function createBookings(input: CreateBookingsInput, answers?: FormData): Promise<CreateBookingsResult> {
   const supabase = await adminClient();
   const dates = (input.dates ?? []).filter(isYmd).slice(0, 100);
+  const form = answers ? await getForm("intake") : null;
+  const questions = form && UUID.test(input.serviceId) ? bookingQuestions(form.fields, input.serviceId) : [];
+  const saved = questions.length && answers ? readAnswers(questions, answers, []).answers : null;
   const { data, error } = await supabase.rpc("book_visits", {
     p_service_id: uuidOrNull(input.serviceId),
     p_pet_ids: (input.petIds ?? []).filter((id) => UUID.test(id)),
@@ -47,10 +56,12 @@ export async function createBookings(input: CreateBookingsInput): Promise<Create
     p_notify: Boolean(input.notify),
     p_guest_name: input.clientId ? null : clampText(input.guestName, 120).trim() || null,
     p_guest_email: input.clientId ? null : clampText(input.guestEmail, 200).trim() || null,
+    p_end_date: input.endDate && isYmd(input.endDate) ? input.endDate : null,
+    p_answers: saved,
   });
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
-  const result = data as { created: { id: string; date: string }[]; skipped: { date: string; reason: string }[] };
+  const result = data as Required<Pick<CreateBookingsResult, "created" | "skipped">>;
   return { ok: true, created: result.created, skipped: result.skipped };
 }
 
@@ -59,6 +70,8 @@ export type MoveInput = {
   date: string;
   windowId?: string | null;
   arrivalMinute?: number | null;
+  /** Overnight stays: new check-out (defaults to keeping the length). */
+  endDate?: string | null;
   walkerId?: string | null;
   /** null = email the client only if the day or window changed */
   notify?: boolean | null;
@@ -76,6 +89,7 @@ export async function moveBooking(input: MoveInput): Promise<ActionResult & { no
     p_walker_id: uuidOrNull(input.walkerId),
     p_notify: input.notify ?? null,
     p_clear_arrival: Boolean(input.clearArrival),
+    p_end_date: input.endDate && isYmd(input.endDate) ? input.endDate : null,
   });
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
@@ -145,6 +159,20 @@ export async function deleteBooking(id: string): Promise<ActionResult> {
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
   return { ok: true, message: "Deleted." };
+}
+
+export async function getAdminServiceDays(serviceId: string, from: string, to: string): Promise<DayAvailability[]> {
+  if (!UUID.test(serviceId) || !isYmd(from) || !isYmd(to)) return [];
+  const supabase = await adminClient();
+  const { data } = await supabase.rpc("service_availability", { p_service_id: serviceId, p_from: from, p_to: to });
+  return (data ?? []) as DayAvailability[];
+}
+
+export async function getAdminTimeSlots(serviceId: string, date: string): Promise<{ minute: number; window_id: string }[]> {
+  if (!UUID.test(serviceId) || !isYmd(date)) return [];
+  const supabase = await adminClient();
+  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date });
+  return (data ?? []) as { minute: number; window_id: string }[];
 }
 
 export async function getAdminAvailability(from: string, to: string) {

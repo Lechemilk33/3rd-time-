@@ -6,9 +6,10 @@ import { createPortal } from "react-dom";
 import { useCalendar, walkerColor } from "@/components/calendar/context";
 import { PetAvatar } from "@/components/calendar/event-bits";
 import { Badge } from "@/components/ui/badge";
-import { clientName, STATUS_META, visitTimeLabel, type BookingDetail } from "@/lib/booking";
+import { clientName, dateSpanLabel, isMultiDay, STATUS_META, visitTimeLabel, type BookingDetail } from "@/lib/booking";
 import { longDate } from "@/lib/dates";
 import { formatDuration } from "@/lib/format";
+import { answerRows } from "@/lib/intake";
 
 const WIDTH = 320;
 const GAP = 10;
@@ -58,6 +59,7 @@ export function HoverCard({
   const color = walkerColor(walker);
   const window_ = b.window_id ? cal.windows.get(b.window_id) : undefined;
   const meta = STATUS_META[b.status];
+  const answers = answerRows(cal.fields, b.answers);
 
   return createPortal(
     <div
@@ -84,9 +86,10 @@ export function HoverCard({
         <div className="flex items-start gap-2 text-sm">
           <CalendarClock className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
           <div>
-            <p className="font-bold text-ink">{longDate(b.service_date)}</p>
+            <p className="font-bold text-ink">{b.kind === "stay" ? dateSpanLabel(b) : longDate(b.service_date)}</p>
             <p className="text-ink-600">
-              {visitTimeLabel(b, cal.windows, cal.timeZone)} · {formatDuration(b.duration_minutes)}
+              {visitTimeLabel(b, cal.windows, cal.timeZone)}
+              {isMultiDay(b) ? "" : ` · ${formatDuration(b.duration_minutes)}`}
             </p>
             {window_ && !b.arrival_time && (b.status === "scheduled" || b.status === "requested") ? (
               <p className="mt-0.5 text-xs font-semibold text-ink-400">No exact time yet — drag it to pin one.</p>
@@ -129,6 +132,18 @@ export function HoverCard({
             </p>
           ) : null}
         </div>
+
+        {answers.length ? (
+          <dl className="space-y-0.5 rounded-xl border border-ink-100 p-3 text-xs">
+            {answers.slice(0, 3).map((a) => (
+              <div key={a.id} className="line-clamp-1">
+                <dt className="inline font-bold text-ink-600">{a.label}: </dt>
+                <dd className="inline text-ink">{a.value}</dd>
+              </div>
+            ))}
+            {answers.length > 3 ? <p className="font-bold text-ocean">+{answers.length - 3} more answers</p> : null}
+          </dl>
+        ) : null}
 
         {b.client_note ? (
           <p className="flex items-start gap-1.5 rounded-xl bg-sun-100 p-3 text-sm text-ink">

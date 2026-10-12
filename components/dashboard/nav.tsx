@@ -63,7 +63,7 @@ const NAV: Record<"portal" | "admin", NavGroup[]> = {
         { href: "/admin/clients", label: "Clients", icon: Users },
         { href: "/admin/messages", label: "Messages", icon: Inbox },
         { href: "/admin/payments", label: "Payments", icon: CreditCard },
-        { href: "/admin/intake-form", label: "Intake form", icon: ClipboardList },
+        { href: "/admin/intake-form", label: "Intake & questions", icon: ClipboardList },
       ],
     },
     {

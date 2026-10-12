@@ -9,9 +9,12 @@ export function appliesTo(field: FormField, serviceIds: readonly string[]) {
   return !field.services?.length || field.services.some((id) => serviceIds.includes(id));
 }
 
-/** Fields a client with these services should see. Headings with nothing under them are dropped. */
-export function visibleFields(fields: FormField[], serviceIds: readonly string[]): FormField[] {
-  const shown = fields.filter((f) => appliesTo(f, serviceIds));
+/** Asked every time one of its services is booked, instead of once on the intake form. */
+export function askedEachBooking(field: FormField) {
+  return field.ask === "each" && Boolean(field.services?.length);
+}
+
+function dropEmptyHeadings(shown: FormField[]) {
   return shown.filter((f, i) => {
     if (f.type !== "heading") return true;
     const next = shown[i + 1];
@@ -19,16 +22,25 @@ export function visibleFields(fields: FormField[], serviceIds: readonly string[]
   });
 }
 
-/** The questions tied to one service (plus the headings above them). */
-export function fieldsForService(fields: FormField[], serviceId: string): FormField[] {
+/** Intake questions a client with these services should see. Headings with nothing under them are dropped. */
+export function visibleFields(fields: FormField[], serviceIds: readonly string[]): FormField[] {
+  return dropEmptyHeadings(fields.filter((f) => !askedEachBooking(f) && appliesTo(f, serviceIds)));
+}
+
+/**
+ * The questions tied to one service (plus the headings above them): the intake ones by default,
+ * or the ones asked on every booking.
+ */
+export function fieldsForService(fields: FormField[], serviceId: string, when: "once" | "each" = "once"): FormField[] {
   const out: FormField[] = [];
   let heading: FormField | null = null;
+  const wanted = (f: FormField) => Boolean(f.services?.includes(serviceId)) && askedEachBooking(f) === (when === "each");
   for (const f of fields) {
     if (f.type === "heading") {
-      heading = f.services?.includes(serviceId) ? f : null;
+      heading = wanted(f) ? f : null;
       continue;
     }
-    if (!f.services?.includes(serviceId)) continue;
+    if (!wanted(f)) continue;
     if (heading) {
       out.push(heading);
       heading = null;
@@ -36,6 +48,30 @@ export function fieldsForService(fields: FormField[], serviceId: string): FormFi
     out.push(f);
   }
   return out;
+}
+
+/** Questions asked each time this service is booked. */
+export function bookingQuestions(fields: FormField[], serviceId: string): FormField[] {
+  return fieldsForService(fields, serviceId, "each");
+}
+
+/** "Label: answer" pairs for showing saved answers. */
+export function answerRows(fields: FormField[], answers: FormAnswers | null | undefined) {
+  if (!answers) return [];
+  const rows: { id: string; label: string; value: string }[] = [];
+  const known = new Set<string>();
+  for (const f of fields) {
+    if (f.type === "heading") continue;
+    known.add(f.id);
+    const v = answers[f.id];
+    if (!isAnswered(f, v)) continue;
+    rows.push({ id: f.id, label: f.label, value: Array.isArray(v) ? v.join(", ") : v === true ? "Yes" : String(v) });
+  }
+  for (const [id, v] of Object.entries(answers)) {
+    if (known.has(id) || v === "" || v == null || (Array.isArray(v) && !v.length)) continue;
+    rows.push({ id, label: "Earlier question", value: Array.isArray(v) ? v.join(", ") : v === true ? "Yes" : String(v) });
+  }
+  return rows;
 }
 
 export function isAnswered(field: FormField, value: FormAnswers[string] | undefined) {

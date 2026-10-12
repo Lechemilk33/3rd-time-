@@ -5,29 +5,52 @@ import { useMemo } from "react";
 import { useCalendar, walkerColor } from "@/components/calendar/context";
 import { PetStack, StatusGlyph } from "@/components/calendar/event-bits";
 import { Badge } from "@/components/ui/badge";
-import { clientName, petNames, STATUS_META, visitStartMinute, visitTimeLabel, type BookingDetail } from "@/lib/booking";
-import { addDays, longDate, type Ymd } from "@/lib/dates";
+import {
+  clientName,
+  isMultiDay,
+  petNames,
+  STATUS_META,
+  stayLength,
+  visitStartMinute,
+  visitTimeLabel,
+  type BookingDetail,
+} from "@/lib/booking";
+import { addDays, daysBetween, diffDays, isoToLocalMinutes, longDate, minuteLabel, type Ymd } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
-export function AgendaList({ bookings }: { bookings: BookingDetail[] }) {
+/** What a full-day / overnight booking means on one of its days. */
+function rangedLabel(b: BookingDetail, day: Ymd, timeZone: string) {
+  if (b.kind !== "stay") return null;
+  if (day === b.service_date) return `Check-in · from ${minuteLabel(isoToLocalMinutes(b.start_time, timeZone))}`;
+  if (day === b.end_date) return `Check-out · by ${b.end_time ? minuteLabel(isoToLocalMinutes(b.end_time, timeZone)) : ""}`;
+  return `Staying · night ${diffDays(day, b.service_date) + 1} of ${stayLength(b)}`;
+}
+
+export function AgendaList({ bookings, from, to }: { bookings: BookingDetail[]; from: Ymd; to: Ymd }) {
   const cal = useCalendar();
   const groups = useMemo(() => {
     const map = new Map<Ymd, BookingDetail[]>();
-    const sorted = [...bookings].sort(
-      (a, b) =>
-        a.service_date.localeCompare(b.service_date) ||
-        visitStartMinute(a, cal.windows) - visitStartMinute(b, cal.windows),
-    );
-    for (const b of sorted) map.set(b.service_date, [...(map.get(b.service_date) ?? []), b]);
-    return [...map.entries()];
-  }, [bookings, cal.windows]);
+    const add = (day: Ymd, b: BookingDetail) => map.set(day, [...(map.get(day) ?? []), b]);
+    for (const b of bookings) {
+      if (!isMultiDay(b)) add(b.service_date, b);
+      else {
+        const start = b.service_date < from ? from : b.service_date;
+        const end = (b.end_date ?? b.service_date) > to ? to : (b.end_date ?? b.service_date);
+        for (const day of daysBetween(start, end)) add(day, b);
+      }
+    }
+    // All-day items first, then by time.
+    const minute = (b: BookingDetail) => (isMultiDay(b) ? -1 : visitStartMinute(b, cal.windows));
+    for (const list of map.values()) list.sort((a, b) => minute(a) - minute(b) || a.title.localeCompare(b.title));
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [bookings, cal.windows, from, to]);
 
   if (!groups.length) {
     return (
       <div className="px-6 py-16 text-center">
         <CalendarDays className="mx-auto size-10 text-sea-300" aria-hidden />
         <p className="mt-3 font-display text-xl font-semibold">Nothing scheduled</p>
-        <p className="mt-1 text-ink-600">No visits in the next 30 days match your filters.</p>
+        <p className="mt-1 text-ink-600">No bookings in the next 30 days match your filters.</p>
       </div>
     );
   }
@@ -47,6 +70,7 @@ export function AgendaList({ bookings }: { bookings: BookingDetail[] }) {
               {list.map((b) => {
                 const walker = b.walker_id ? cal.walkers.get(b.walker_id) : undefined;
                 const color = walkerColor(walker);
+                const stayLine = rangedLabel(b, day, cal.timeZone);
                 return (
                   <li key={b.id}>
                     <button
@@ -62,7 +86,12 @@ export function AgendaList({ bookings }: { bookings: BookingDetail[] }) {
                     >
                       <span className="h-10 w-1 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
                       <span className="w-32 shrink-0 text-sm font-bold text-ink">
-                        {visitTimeLabel(b, cal.windows, cal.timeZone)}
+                        {isMultiDay(b) ? (
+                          <span className="mr-1" aria-hidden>
+                            {b.kind === "stay" ? "🌙" : "☀️"}
+                          </span>
+                        ) : null}
+                        {stayLine ?? visitTimeLabel(b, cal.windows, cal.timeZone)}
                       </span>
                       <PetStack pets={b.pets} size={32} />
                       <span className="min-w-0 flex-1">

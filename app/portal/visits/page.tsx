@@ -18,14 +18,14 @@ export default async function VisitsPage() {
       .from("bookings")
       .select(BOOKING_DETAIL_SELECT)
       .eq("user_id", user.id)
-      .gte("service_date", today)
+      .gte("end_date", today)
       .order("start_time")
       .limit(200),
     supabase
       .from("bookings")
       .select(BOOKING_DETAIL_SELECT)
       .eq("user_id", user.id)
-      .lt("service_date", today)
+      .lt("end_date", today)
       .gte("service_date", addDays(today, -120))
       .order("start_time", { ascending: false })
       .limit(30),
@@ -57,7 +57,7 @@ export default async function VisitsPage() {
         <VisitList visits={active} {...common} />
       ) : (
         <EmptyState icon={<CalendarDays className="size-7" />} title="Nothing booked yet">
-          <p>Your upcoming walks and visits will show up here.</p>
+          <p>Your upcoming walks, visits and stays will show up here.</p>
           <ButtonLink href="/portal/book" className="mt-4">
             Book a visit
           </ButtonLink>

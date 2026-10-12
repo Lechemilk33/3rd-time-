@@ -5,7 +5,7 @@ import { refresh } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { getForm } from "@/lib/content";
 import { createClient } from "@/lib/supabase/server";
-import { missingMessage, readAnswers, visibleFields } from "@/lib/intake";
+import { askedEachBooking, missingMessage, readAnswers, visibleFields } from "@/lib/intake";
 import type { ActionResult, FormAnswers } from "@/lib/types";
 import { formString } from "@/lib/utils";
 
@@ -99,7 +99,8 @@ export async function submitIntake(_prev: ActionResult | null, formData: FormDat
   const serviceIds = [...new Set(formData.getAll("service_ids").map(String))].filter((id) => valid.has(id));
 
   // Only questions for the services they picked are required.
-  const { answers, missing } = readAnswers(form.fields, formData, visibleFields(form.fields, serviceIds));
+  const intakeFields = form.fields.filter((f) => !askedEachBooking(f));
+  const { answers, missing } = readAnswers(intakeFields, formData, visibleFields(form.fields, serviceIds));
   if (missing.length) return { ok: false, error: missingMessage(missing) };
 
   const { error } = await supabase.from("form_submissions").upsert(

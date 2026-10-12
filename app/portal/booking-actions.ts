@@ -2,11 +2,11 @@
 
 import { refresh } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import type { Availability } from "@/lib/booking";
+import type { Availability, DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
-import { fieldsForService, missingMessage, readAnswers } from "@/lib/intake";
+import { bookingQuestions, fieldsForService, missingMessage, readAnswers } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult, FormAnswers } from "@/lib/types";
 
@@ -20,28 +20,71 @@ export async function getAvailability(from: string, to: string): Promise<Availab
   return (data ?? []) as Availability[];
 }
 
+/** Full-day and overnight services: open spots per day. */
+export async function getServiceDays(serviceId: string, from: string, to: string): Promise<DayAvailability[]> {
+  await requireUser();
+  if (!UUID.test(serviceId) || !isYmd(from) || !isYmd(to)) return [];
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("service_availability", { p_service_id: serviceId, p_from: from, p_to: to });
+  return (data ?? []) as DayAvailability[];
+}
+
+/** Set-time services: start times still open on a day (minutes after midnight). */
+export async function getTimeSlots(serviceId: string, date: string): Promise<{ minute: number; window_id: string }[]> {
+  await requireUser();
+  if (!UUID.test(serviceId) || !isYmd(date)) return [];
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date });
+  return (data ?? []) as { minute: number; window_id: string }[];
+}
+
 export type BookResult = ActionResult & {
   status?: "scheduled" | "requested";
-  created?: { id: string; date: string }[];
+  created?: { id: string; date: string; end_date: string }[];
   skipped?: { date: string; reason: string }[];
 };
 
-export async function bookVisits(input: {
+export type BookInput = {
   serviceId: string;
   petIds: string[];
   dates: string[];
-  windowId: string;
+  /** Window visits. */
+  windowId?: string | null;
+  /** Set-time appointments. */
+  arrivalMinute?: number | null;
+  /** Overnight stays: check-out date. */
+  endDate?: string | null;
   note: string;
-}): Promise<BookResult> {
+};
+
+/** Books visits. `answers` carries the service's "every booking" questions (f_<id> inputs). */
+export async function bookVisits(input: BookInput, answers?: FormData): Promise<BookResult> {
   const user = await requireUser();
-  if (!UUID.test(input.serviceId) || !UUID.test(input.windowId)) return { ok: false, error: "Pick a service and a time." };
+  if (!UUID.test(input.serviceId)) return { ok: false, error: "Pick a service." };
+  const windowId = input.windowId && UUID.test(input.windowId) ? input.windowId : null;
+  const minute = Number.isInteger(input.arrivalMinute) ? Number(input.arrivalMinute) : null;
+  const endDate = input.endDate && isYmd(input.endDate) ? input.endDate : null;
   const supabase = await createClient();
+
+  // Questions asked on every booking of this service.
+  const form = await getForm("intake");
+  const questions = form ? bookingQuestions(form.fields, input.serviceId) : [];
+  let saved: FormAnswers | null = null;
+  if (questions.length) {
+    const read = readAnswers(questions, answers ?? new FormData());
+    if (read.missing.length) return { ok: false, error: missingMessage(read.missing) };
+    saved = read.answers;
+  }
+
   const { data, error } = await supabase.rpc("book_visits", {
     p_service_id: input.serviceId,
     p_pet_ids: (input.petIds ?? []).filter((id) => UUID.test(id)).slice(0, 10),
     p_dates: (input.dates ?? []).filter(isYmd).slice(0, 100),
-    p_window_id: input.windowId,
+    p_window_id: windowId,
+    p_arrival_minute: minute != null && minute >= 0 && minute < 1440 ? minute : null,
+    p_end_date: endDate,
     p_note: typeof input.note === "string" ? input.note.slice(0, 1000) : null,
+    p_answers: saved,
   });
   if (error) return { ok: false, error: rpcError(error) };
 
@@ -60,7 +103,7 @@ export async function bookVisits(input: {
   }
 
   refresh();
-  const result = data as { status: "scheduled" | "requested"; created: { id: string; date: string }[]; skipped: { date: string; reason: string }[] };
+  const result = data as Required<Pick<BookResult, "status" | "created" | "skipped">>;
   return { ok: true, ...result };
 }
 
@@ -79,11 +122,20 @@ export async function cancelVisit(id: string, scope: "one" | "following", reason
   return { ok: true, message: n > 1 ? `Canceled ${n} visits. We’ve let the team know.` : "Visit canceled. We’ve let the team know." };
 }
 
-export async function rescheduleVisit(id: string, date: string, windowId: string): Promise<ActionResult> {
+export async function rescheduleVisit(
+  id: string,
+  change: { date: string; windowId?: string | null; arrivalMinute?: number | null; endDate?: string | null },
+): Promise<ActionResult> {
   await requireUser();
-  if (!UUID.test(id) || !isYmd(date) || !UUID.test(windowId)) return { ok: false, error: "Pick a new day and time." };
+  if (!UUID.test(id) || !isYmd(change.date)) return { ok: false, error: "Pick a new day and time." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("move_booking", { p_booking_id: id, p_date: date, p_window_id: windowId });
+  const { error } = await supabase.rpc("move_booking", {
+    p_booking_id: id,
+    p_date: change.date,
+    p_window_id: change.windowId && UUID.test(change.windowId) ? change.windowId : null,
+    p_arrival_minute: Number.isInteger(change.arrivalMinute) ? change.arrivalMinute : null,
+    p_end_date: change.endDate && isYmd(change.endDate) ? change.endDate : null,
+  });
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
   return { ok: true, message: "Done! You’ll get an email with the new time." };

@@ -1,6 +1,6 @@
 "use server";
 
-import type { ActionResult, FormDefinition, FormField, FormFieldType, GalleryPhoto, Service } from "@/lib/types";
+import type { ActionResult, FormDefinition, FormField, FormFieldType, GalleryPhoto, PriceUnit, Service, ServiceKind } from "@/lib/types";
 import { MEDIA_BUCKET } from "@/lib/media";
 import { adminClient, clampText, publishContentChange } from "./shared";
 
@@ -16,18 +16,26 @@ async function listServices(supabase: Awaited<ReturnType<typeof adminClient>>) {
   return (data ?? []) as Service[];
 }
 
+const KINDS: ServiceKind[] = ["window", "time", "day", "stay"];
+const UNITS: PriceUnit[] = ["visit", "hour", "day", "night", "flat"];
+
+function int(value: unknown, min: number, max: number, fallback: number | null): number | null {
+  const n = Number(value);
+  if (value === null || value === "" || !Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
 function cleanService(input: ServiceInput): ServiceInput {
-  const cents = input.price_cents == null || Number.isNaN(input.price_cents) ? null : Math.max(0, Math.round(input.price_cents));
-  const minutes =
-    input.duration_minutes == null || Number.isNaN(input.duration_minutes) || input.duration_minutes <= 0
-      ? null
-      : Math.round(input.duration_minutes);
+  const kind = KINDS.includes(input.kind) ? input.kind : "window";
+  const ranged = kind === "day" || kind === "stay";
+  const minNights = int(input.min_nights, 1, 60, 1)!;
   return {
     name: clampText(input.name, 80).trim() || "New service",
     description: clampText(input.description, 1000) || null,
-    price_cents: cents,
-    price_label: clampText(input.price_label, 40) || null,
-    duration_minutes: minutes,
+    price_cents: int(input.price_cents, 0, 10_000_000, null),
+    price_label: clampText(input.price_label, 40).trim() || null,
+    price_unit: UNITS.includes(input.price_unit) ? input.price_unit : "visit",
+    duration_minutes: ranged ? null : int(input.duration_minutes, 5, 720, 30),
     image_url: clampText(input.image_url, 1000) || null,
     booking_url: clampText(input.booking_url, 1000) || null,
     active: Boolean(input.active),
@@ -35,37 +43,76 @@ function cleanService(input: ServiceInput): ServiceInput {
     bookable: Boolean(input.bookable),
     audience: input.audience === "everyone" ? "everyone" : "approved",
     confirmation: input.confirmation === "request" ? "request" : "instant",
-    max_pets: Math.min(10, Math.max(1, Math.round(Number(input.max_pets) || 3))),
+    max_pets: int(input.max_pets, 1, 10, 3)!,
+    kind,
+    daily_capacity: ranged ? int(input.daily_capacity, 1, 100, null) : null,
+    start_minute: ranged ? int(input.start_minute, 0, 1439, null) : null,
+    end_minute: ranged ? int(input.end_minute, 0, 1439, null) : null,
+    min_nights: minNights,
+    max_nights: Math.max(minNights, int(input.max_nights, 1, 90, 14)!),
   };
 }
 
-export async function createService(): Promise<ServicesResult> {
+const NEW_SERVICE: Record<ServiceKind, Partial<ServiceInput>> = {
+  window: { name: "New visit", price_cents: 2500, price_unit: "visit", duration_minutes: 30, confirmation: "instant" },
+  time: { name: "New appointment", price_cents: 5000, price_unit: "visit", duration_minutes: 60, confirmation: "instant", max_pets: 2 },
+  day: {
+    name: "Doggy day care",
+    price_cents: 4500,
+    price_unit: "day",
+    duration_minutes: null,
+    start_minute: 8 * 60,
+    end_minute: 17 * 60,
+    daily_capacity: 6,
+    confirmation: "instant",
+  },
+  stay: {
+    name: "Overnight stay",
+    price_cents: 7500,
+    price_unit: "night",
+    duration_minutes: null,
+    start_minute: 17 * 60,
+    end_minute: 10 * 60,
+    daily_capacity: 3,
+    min_nights: 1,
+    max_nights: 14,
+    confirmation: "request",
+  },
+};
+
+export async function createService(kind: ServiceKind = "window"): Promise<ServicesResult & { id?: string }> {
   const supabase = await adminClient();
   const services = await listServices(supabase);
-  const { error } = await supabase.from("services").insert({
-    name: "New service",
-    description: "Describe this service.",
-    price_cents: 2500,
-    price_label: "per walk",
-    duration_minutes: 30,
-    active: false,
-    allow_online_payment: false,
-    bookable: true,
-    audience: "approved",
-    confirmation: "instant",
-    position: services.length,
-  });
+  const k = KINDS.includes(kind) ? kind : "window";
+  const { data, error } = await supabase
+    .from("services")
+    .insert({
+      description: "Describe this service.",
+      active: false,
+      allow_online_payment: false,
+      bookable: true,
+      audience: "approved",
+      kind: k,
+      ...NEW_SERVICE[k],
+      position: services.length,
+    })
+    .select("id")
+    .single();
   if (error) return { ok: false, error: error.message };
   publishContentChange();
-  return { ok: true, services: await listServices(supabase) };
+  return { ok: true, services: await listServices(supabase), id: data.id as string };
 }
 
-export async function saveService(id: string, input: ServiceInput): Promise<ActionResult> {
+export async function saveService(id: string, input: ServiceInput): Promise<ActionResult & { service?: Service }> {
   const supabase = await adminClient();
-  const { error } = await supabase.from("services").update(cleanService(input)).eq("id", id);
+  const clean = cleanService(input);
+  if (clean.kind === "day" && clean.start_minute != null && clean.end_minute != null && clean.end_minute <= clean.start_minute) {
+    return { ok: false, error: "Pick-up has to be after drop-off." };
+  }
+  const { data, error } = await supabase.from("services").update(clean).eq("id", id).select("*").single();
   if (error) return { ok: false, error: error.message };
   publishContentChange();
-  return { ok: true, message: "Saved and live!" };
+  return { ok: true, message: "Saved and live!", service: data as Service };
 }
 
 export async function moveService(id: string, direction: "up" | "down"): Promise<ServicesResult> {
@@ -200,6 +247,7 @@ export async function saveForm(input: FormDefinition): Promise<ActionResult> {
       required: f.type === "heading" ? undefined : Boolean(f.required),
       options,
       services: services.length ? services : undefined,
+      ask: services.length && f.ask === "each" ? "each" : undefined,
     });
   }
 

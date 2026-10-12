@@ -73,7 +73,22 @@ export type Service = {
   /** instant = booked right away; request = an admin confirms it. */
   confirmation: "instant" | "request";
   max_pets: number;
+  /** How it's booked: a visit in a time window, a set-time appointment, a full day or an overnight stay. */
+  kind: ServiceKind;
+  /** What the price is per. */
+  price_unit: PriceUnit;
+  /** Full-day / overnight services: how many can be booked per day (per night). Null = no limit. */
+  daily_capacity: number | null;
+  /** Full-day / overnight services: drop-off / check-in and pick-up / check-out (minutes after midnight). */
+  start_minute: number | null;
+  end_minute: number | null;
+  /** Overnight services: allowed stay length. */
+  min_nights: number;
+  max_nights: number;
 };
+
+export type ServiceKind = "window" | "time" | "day" | "stay";
+export type PriceUnit = "visit" | "hour" | "day" | "night" | "flat";
 
 export type GalleryPhoto = {
   id: string;
@@ -107,6 +122,8 @@ export type FormField = {
   options?: string[];
   /** Only ask clients who signed up for one of these services (service ids). Empty = everyone. */
   services?: string[];
+  /** once = on the intake form (default); each = every time one of `services` is booked. */
+  ask?: "once" | "each";
 };
 
 export type FormDefinition = {
@@ -178,7 +195,10 @@ export type Booking = {
   end_time: string | null;
   status: BookingStatus;
   source: "portal" | "manual";
+  kind: ServiceKind;
   service_date: string;
+  /** Last day (check-out day for stays). Same as service_date for single-day visits. */
+  end_date: string;
   window_id: string | null;
   /** "HH:MM:SS" local time an admin pinned, if any. */
   arrival_time: string | null;
@@ -189,6 +209,8 @@ export type Booking = {
   notes: string | null;
   /** What the client wrote when booking. */
   client_note: string | null;
+  /** Answers to the service's "every booking" questions. */
+  answers: FormAnswers;
   cancel_reason: string | null;
   invitee_name: string | null;
   invitee_email: string | null;

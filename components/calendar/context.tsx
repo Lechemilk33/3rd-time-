@@ -3,6 +3,7 @@
 import { createContext, useContext } from "react";
 import type { BookingDetail, BookingWindow, Walker } from "@/lib/booking";
 import type { Ymd } from "@/lib/dates";
+import type { FormField } from "@/lib/types";
 
 export type MoveTarget = {
   date: Ymd;
@@ -19,6 +20,8 @@ export type CalendarContextValue = {
   today: Ymd;
   windows: Map<string, BookingWindow>;
   walkers: Map<string, Walker>;
+  /** Intake questions (labels for booking answers). */
+  fields: FormField[];
   /** True when a search is active and this booking doesn't match it. */
   isDimmed: (b: BookingDetail) => boolean;
   open: (id: string) => void;

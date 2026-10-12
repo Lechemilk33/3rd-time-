@@ -2,6 +2,7 @@ import { adminData } from "@/app/admin/_lib";
 import { AdminCalendar } from "@/components/calendar/admin-calendar";
 import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
+import { getForm } from "@/lib/content";
 import { isCalendarView, viewRange } from "@/lib/calendar";
 import { isYmd, minutesNowIn, todayIn } from "@/lib/dates";
 
@@ -16,12 +17,12 @@ export default async function CalendarPage({ searchParams }: PageProps<"/admin/c
   const focusId = typeof sp.b === "string" && /^[0-9a-f-]{36}$/i.test(sp.b) ? sp.b : null;
   const { from, to } = viewRange(view, date);
 
-  const [bookingsRes, requestsRes, focusRes] = await Promise.all([
+  const [bookingsRes, requestsRes, focusRes, form] = await Promise.all([
     supabase
       .from("bookings")
       .select(BOOKING_DETAIL_SELECT)
-      .gte("service_date", from)
       .lte("service_date", to)
+      .gte("end_date", from)
       .order("start_time")
       .limit(3000),
     supabase
@@ -32,6 +33,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/admin/c
       .order("start_time")
       .limit(50),
     focusId ? supabase.from("bookings").select(BOOKING_DETAIL_SELECT).eq("id", focusId).maybeSingle() : null,
+    getForm("intake"),
   ]);
 
   return (
@@ -50,6 +52,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/admin/c
       walkers={config.walkers}
       timeZone={tz}
       initialOpenId={focusId}
+      fields={form?.fields ?? []}
     />
   );
 }

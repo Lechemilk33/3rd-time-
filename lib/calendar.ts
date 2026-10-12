@@ -52,7 +52,10 @@ export function viewTitle(view: CalendarView, date: Ymd): string {
   const sameYear = from.slice(0, 4) === to.slice(0, 4);
   const sameMonth = from.slice(0, 7) === to.slice(0, 7);
   const left = formatYmd(from, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
-  const right = formatYmd(to, { ...(sameMonth ? {} : { month: "short" }), day: "numeric", year: "numeric" });
+  // Day + year without a month formats oddly in some browsers ("2026 (day: 18)"), so build it by hand.
+  const right = sameMonth
+    ? `${Number(to.slice(8))}, ${to.slice(0, 4)}`
+    : formatYmd(to, { month: "short", day: "numeric", year: "numeric" });
   return `${left} – ${right}`;
 }
 

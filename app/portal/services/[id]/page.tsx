@@ -5,7 +5,7 @@ import { PageTitle } from "@/components/dashboard/shell";
 import { AddServiceForm } from "@/components/portal/add-service-form";
 import { requireUser } from "@/lib/auth";
 import { getForm } from "@/lib/content";
-import { formatDuration, formatPrice } from "@/lib/format";
+import { servicePrice, serviceTiming } from "@/lib/booking";
 import { fieldsForService } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
 import type { FormAnswers, Service } from "@/lib/types";
@@ -33,7 +33,7 @@ export default async function AddServicePage({ params }: PageProps<"/portal/serv
       </Link>
       <PageTitle
         title={already ? service.name : `Add ${service.name}`}
-        description={[formatPrice(service.price_cents, service.price_label), formatDuration(service.duration_minutes)].filter(Boolean).join(" · ")}
+        description={[servicePrice(service), serviceTiming(service)].filter(Boolean).join(" · ")}
       />
       <AddServiceForm
         service={{ id: service.id, name: service.name, description: service.description }}

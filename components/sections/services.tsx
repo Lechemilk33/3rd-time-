@@ -1,11 +1,12 @@
-import { Clock } from "lucide-react";
+import { Clock, Moon } from "lucide-react";
 import { SectionHeading, SectionShell } from "@/components/sections/shell";
 import { bool, str } from "@/components/sections/helpers";
 import { ButtonLink } from "@/components/ui/button";
 import { PawMark } from "@/components/ui/icons";
 import { Photo } from "@/components/ui/photo";
 import { getServices, getSiteSettings } from "@/lib/content";
-import { formatDuration, formatMoney } from "@/lib/format";
+import { priceUnitLabel, serviceTiming } from "@/lib/booking";
+import { formatMoney } from "@/lib/format";
 import type { SectionData } from "@/lib/types";
 import { safeHref } from "@/lib/utils";
 
@@ -47,12 +48,17 @@ export async function ServicesSection({ data }: { data: SectionData }) {
                           : formatMoney(service.price_cents)}
                     </span>
                     {service.price_cents ? (
-                      <span className="text-sm font-bold text-ink-600">{service.price_label}</span>
+                      <span className="text-sm font-bold text-ink-600">{priceUnitLabel(service)}</span>
                     ) : null}
                   </div>
-                  {service.duration_minutes ? (
+                  {serviceTiming(service) ? (
                     <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-ink-600">
-                      <Clock className="size-4" aria-hidden /> {formatDuration(service.duration_minutes)}
+                      {service.kind === "stay" ? (
+                        <Moon className="size-4" aria-hidden />
+                      ) : (
+                        <Clock className="size-4" aria-hidden />
+                      )}{" "}
+                      {serviceTiming(service)}
                     </p>
                   ) : null}
                   {service.description ? (

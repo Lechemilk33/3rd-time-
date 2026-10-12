@@ -1,4 +1,5 @@
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { askedEachBooking } from "@/lib/intake";
 import type { FormAnswers, FormField } from "@/lib/types";
 
 /**
@@ -143,8 +144,11 @@ export function FormAnswersView({
   serviceIds?: string[];
   serviceNames?: Map<string, string>;
 }) {
+  // Per-booking questions are shown on each booking instead.
   const shown = fields.filter(
-    (f) => !f.services?.length || !serviceIds || f.services.some((s) => serviceIds.includes(s)) || answers[f.id] !== undefined,
+    (f) =>
+      !askedEachBooking(f) &&
+      (!f.services?.length || !serviceIds || f.services.some((s) => serviceIds.includes(s)) || answers[f.id] !== undefined),
   );
   return (
     <dl className="space-y-4">

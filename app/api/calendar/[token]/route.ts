@@ -6,6 +6,8 @@ type FeedBooking = {
   id: string;
   status: string;
   title: string;
+  kind?: string;
+  end_date?: string;
   visit_start: string;
   visit_end: string;
   service_date: string;
@@ -42,7 +44,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/calendar/[to
     .filter((b) => !mine || b.walker_id === feed.walker_id)
     .map((b) => {
       const who = b.pets || b.client_name || "Visit";
-      const prefix = b.status === "requested" ? "⏳ " : b.status === "completed" ? "✓ " : "🐾 ";
+      const prefix = b.status === "requested" ? "⏳ " : b.status === "completed" ? "✓ " : b.kind === "stay" ? "🌙 " : "🐾 ";
       return {
         id: b.id,
         title: `${prefix}${who} · ${b.title}${mine || !b.walker_name ? "" : ` (${b.walker_name})`}`,

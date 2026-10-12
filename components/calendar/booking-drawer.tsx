@@ -3,6 +3,7 @@
 import {
   CalendarClock,
   Check,
+  ClipboardList,
   ExternalLink,
   KeyRound,
   LoaderCircle,
@@ -31,9 +32,20 @@ import { PetAvatar } from "@/components/calendar/event-bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
-import { clientName, petNames, STATUS_META, visitTimeLabel, windowRange, type BookingDetail } from "@/lib/booking";
-import { longDate, minutesToTimeInput, timeToMinutes } from "@/lib/dates";
-import { formatDate, formatDuration, formatPrice } from "@/lib/format";
+import {
+  clientName,
+  dateSpanLabel,
+  isMultiDay,
+  petNames,
+  servicePrice,
+  STATUS_META,
+  visitTimeLabel,
+  windowRange,
+  type BookingDetail,
+} from "@/lib/booking";
+import { addDays, diffDays, isYmd, longDate, minutesToTimeInput, timeToMinutes } from "@/lib/dates";
+import { formatDate, formatDuration } from "@/lib/format";
+import { answerRows } from "@/lib/intake";
 import type { ActionResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +71,8 @@ export function BookingDrawer({
   const meta = STATUS_META[b.status];
   const active = b.status === "scheduled" || b.status === "requested";
   const window_ = b.window_id ? cal.windows.get(b.window_id) : undefined;
+  const noun = b.kind === "stay" ? "stay" : b.kind === "day" ? "day" : "visit";
+  const answers = answerRows(cal.fields, b.answers);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -110,7 +124,7 @@ export function BookingDrawer({
             </h2>
             <p className="font-bold text-ink-600">
               {b.title}
-              {b.service?.price_cents != null ? ` · ${formatPrice(b.service.price_cents, b.service.price_label)}` : ""}
+              {b.service && servicePrice(b.service) ? ` · ${servicePrice(b.service)}` : ""}
             </p>
           </div>
           <button
@@ -153,7 +167,7 @@ export function BookingDrawer({
                   <CalendarClock className="size-4" aria-hidden /> Reschedule
                 </Button>
                 <Button size="sm" variant="danger" disabled={pending} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>
-                  Cancel visit…
+                  Cancel {noun}…
                 </Button>
               </>
             ) : null}
@@ -164,13 +178,14 @@ export function BookingDrawer({
             ) : null}
             {b.status === "canceled" || b.status === "declined" ? (
               <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => setBookingStatus(b.id, "scheduled"))}>
-                <RotateCcw className="size-4" aria-hidden /> Restore visit
+                <RotateCcw className="size-4" aria-hidden /> Restore {noun}
               </Button>
             ) : null}
           </div>
 
           {panel === "cancel" || panel === "decline" ? (
             <ReasonPanel
+              noun={noun}
               kind={panel}
               series={Boolean(b.series_id)}
               pending={pending}
@@ -201,17 +216,31 @@ export function BookingDrawer({
 
           {/* When */}
           <Section title="When" icon={<CalendarClock className="size-4" />}>
-            <p className="font-extrabold text-ink">{longDate(b.service_date)}</p>
+            <p className="font-extrabold text-ink">{b.kind === "stay" ? dateSpanLabel(b) : longDate(b.service_date)}</p>
             <p className="text-ink-600">
-              {visitTimeLabel(b, cal.windows, cal.timeZone)} · {formatDuration(b.duration_minutes)}
+              {visitTimeLabel(b, cal.windows, cal.timeZone)}
+              {isMultiDay(b) ? "" : ` · ${formatDuration(b.duration_minutes)}`}
             </p>
-            {active ? <ArrivalEditor key={`${b.id}-${b.arrival_time}`} booking={b} pending={pending} run={run} /> : null}
+            {active && !isMultiDay(b) ? <ArrivalEditor key={`${b.id}-${b.arrival_time}`} booking={b} pending={pending} run={run} /> : null}
             {window_ && !b.arrival_time ? (
               <p className="mt-1 text-xs font-semibold text-ink-400">
                 Client booked the {window_.label.toLowerCase()} window ({windowRange(window_)}).
               </p>
             ) : null}
           </Section>
+
+          {answers.length ? (
+            <Section title={`${b.title} answers`} icon={<ClipboardList className="size-4" />}>
+              <dl className="space-y-2 rounded-2xl border border-ink-100 p-3 text-sm">
+                {answers.map((a) => (
+                  <div key={a.id}>
+                    <dt className="font-bold text-ink-600">{a.label}</dt>
+                    <dd className="whitespace-pre-wrap text-ink">{a.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Section>
+          ) : null}
 
           {/* Walker */}
           <Section title="Walker" icon={<UserRound className="size-4" />}>
@@ -339,7 +368,7 @@ export function BookingDrawer({
               type="button"
               disabled={pending}
               onClick={() => {
-                if (confirm("Delete this visit for good? (Canceling keeps a record — use that unless this was a mistake.)")) {
+                if (confirm(`Delete this ${noun} for good? (Canceling keeps a record — use that unless this was a mistake.)`)) {
                   run(() => deleteBooking(b.id), onClose);
                 }
               }}
@@ -452,12 +481,14 @@ function NotesEditor({
 }
 
 function ReasonPanel({
+  noun,
   kind,
   series,
   pending,
   onCancel,
   onSubmit,
 }: {
+  noun: string;
   kind: "cancel" | "decline";
   series: boolean;
   pending: boolean;
@@ -469,13 +500,13 @@ function ReasonPanel({
   const [scope, setScope] = useState<"one" | "following">("one");
   return (
     <div className="space-y-3 rounded-2xl border-2 border-red-100 bg-red-50/50 p-4">
-      <p className="font-extrabold">{kind === "cancel" ? "Cancel this visit?" : "Decline this request?"}</p>
+      <p className="font-extrabold">{kind === "cancel" ? `Cancel this ${noun}?` : "Decline this request?"}</p>
       {series ? (
         <div className="flex flex-wrap gap-2 text-sm font-bold">
           {(["one", "following"] as const).map((s) => (
             <label key={s} className="flex cursor-pointer items-center gap-2 rounded-full border-2 border-ink-100 bg-white px-3 py-1.5 has-[:checked]:border-ocean">
               <input type="radio" name="scope" className="accent-ocean" checked={scope === s} onChange={() => setScope(s)} />
-              {s === "one" ? "Just this visit" : "This and all after it"}
+              {s === "one" ? `Just this ${noun}` : "This and all after it"}
             </label>
           ))}
         </div>
@@ -487,7 +518,7 @@ function ReasonPanel({
       </label>
       <div className="flex gap-2">
         <Button size="sm" variant="danger" disabled={pending} onClick={() => onSubmit({ reason, notify, scope })}>
-          {kind === "cancel" ? "Cancel visit" : "Decline request"}
+          {kind === "cancel" ? `Cancel ${noun}` : "Decline request"}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Keep it
@@ -509,33 +540,58 @@ function MovePanel({
   onSubmit: (input: Parameters<typeof moveBooking>[0]) => void;
 }) {
   const cal = useCalendar();
+  const kind = booking.kind ?? "window";
   const windows = [...cal.windows.values()].filter((w) => w.active || w.id === booking.window_id);
+  const pinned = timeToMinutes(booking.arrival_time);
   const [date, setDate] = useState(booking.service_date);
+  const [checkOut, setCheckOut] = useState(booking.end_date ?? booking.service_date);
   const [windowId, setWindowId] = useState(booking.window_id ?? (windows[0]?.id ?? ""));
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState(kind === "time" && pinned != null ? minutesToTimeInput(pinned) : "");
   const [walkerId, setWalkerId] = useState(booking.walker_id ?? "");
   const [notify, setNotify] = useState(true);
   const minute = time ? timeToMinutes(`${time}:00`) : null;
+  const nights = kind === "stay" && isYmd(date) && isYmd(checkOut) ? diffDays(checkOut, date) : 0;
+  const valid = isYmd(date) && (kind === "stay" ? nights > 0 : kind === "time" ? minute != null : true);
 
   return (
     <div className="space-y-3 rounded-2xl border-2 border-sea-200 bg-sea-50/60 p-4">
       <p className="font-extrabold">Reschedule</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Date" htmlFor="mv-date">
-          <Input id="mv-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="py-2" />
+        <Field label={kind === "stay" ? "Check-in" : "Date"} htmlFor="mv-date">
+          <Input
+            id="mv-date"
+            type="date"
+            value={date}
+            onChange={(e) => {
+              const d = e.target.value;
+              // Keep the stay's length when the check-in moves.
+              if (kind === "stay" && isYmd(d) && isYmd(date)) setCheckOut(addDays(checkOut, diffDays(d, date)));
+              setDate(d);
+            }}
+            className="py-2"
+          />
         </Field>
-        <Field label="Time of day" htmlFor="mv-window">
-          <Select id="mv-window" value={windowId} onChange={(e) => setWindowId(e.target.value)} className="py-2">
-            {windows.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.label} · {windowRange(w)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Exact time (optional)" htmlFor="mv-time">
-          <Input id="mv-time" type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} className="py-2" />
-        </Field>
+        {kind === "stay" ? (
+          <Field label={`Check-out${nights > 0 ? ` (${nights} night${nights === 1 ? "" : "s"})` : ""}`} htmlFor="mv-out">
+            <Input id="mv-out" type="date" min={isYmd(date) ? addDays(date, 1) : undefined} value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="py-2" />
+          </Field>
+        ) : null}
+        {kind === "window" ? (
+          <Field label="Time of day" htmlFor="mv-window">
+            <Select id="mv-window" value={windowId} onChange={(e) => setWindowId(e.target.value)} className="py-2">
+              {windows.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.label} · {windowRange(w)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        {kind === "window" || kind === "time" ? (
+          <Field label={kind === "time" ? "Start time" : "Exact time (optional)"} htmlFor="mv-time">
+            <Input id="mv-time" type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} className="py-2" />
+          </Field>
+        ) : null}
         <Field label="Walker" htmlFor="mv-walker">
           <Select id="mv-walker" value={walkerId} onChange={(e) => setWalkerId(e.target.value)} className="py-2">
             <option value="">Keep current</option>
@@ -549,26 +605,30 @@ function MovePanel({
       </div>
       <label className="flex items-center gap-2 text-sm font-bold">
         <input type="checkbox" className="size-4 accent-ocean" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-        Email the client the new time
+        Email the client the new {kind === "stay" ? "dates" : "time"}
       </label>
       <div className="flex gap-2">
         <Button
           size="sm"
           variant="secondary"
-          disabled={pending || !date}
+          disabled={pending || !valid}
           onClick={() =>
-            onSubmit({
-              id: booking.id,
-              date,
-              windowId: minute != null ? null : windowId,
-              arrivalMinute: minute,
-              walkerId: walkerId || null,
-              notify,
-              clearArrival: minute == null,
-            })
+            onSubmit(
+              isMultiDay(booking)
+                ? { id: booking.id, date, endDate: kind === "stay" ? checkOut : null, walkerId: walkerId || null, notify }
+                : {
+                    id: booking.id,
+                    date,
+                    windowId: minute != null ? null : windowId,
+                    arrivalMinute: minute,
+                    walkerId: walkerId || null,
+                    notify,
+                    clearArrival: minute == null,
+                  },
+            )
           }
         >
-          Move visit
+          Move {kind === "stay" ? "stay" : kind === "day" ? "day" : "visit"}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Never mind

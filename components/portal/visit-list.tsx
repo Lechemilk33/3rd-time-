@@ -2,23 +2,27 @@
 
 import { CalendarClock, CalendarPlus, MessageSquareText, Repeat, X } from "lucide-react";
 import { useState, useTransition } from "react";
-import { cancelVisit, getAvailability, rescheduleVisit } from "@/app/portal/booking-actions";
+import { cancelVisit, getAvailability, getServiceDays, rescheduleVisit } from "@/app/portal/booking-actions";
 import { DateWindowPicker } from "@/components/booking/date-window-picker";
+import { DaysPicker, StayPicker, TimeSlotPicker } from "@/components/booking/day-pickers";
 import { PetStack } from "@/components/calendar/event-bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { Textarea } from "@/components/ui/form";
 import {
+  dateSpanLabel,
   icsForVisits,
+  isMultiDay,
   petNames,
   STATUS_META,
   visitTimeLabel,
   type Availability,
   type BookingDetail,
   type BookingWindow,
+  type DayAvailability,
 } from "@/lib/booking";
-import { addDays, longDate, timeToMinutes, zonedToDate, type Ymd } from "@/lib/dates";
+import { addDays, diffDays, formatYmd, longDate, timeToMinutes, zonedToDate, type Ymd } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -104,8 +108,15 @@ function VisitCard({
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<"one" | "following">("one");
   const [availability, setAvailability] = useState<Availability[] | null>(null);
+  const [days, setDays] = useState<DayAvailability[] | null>(null);
   const [date, setDate] = useState<Ymd | null>(null);
   const [windowId, setWindowId] = useState<string | null>(null);
+  const [minute, setMinute] = useState<number | null>(null);
+  const [checkOut, setCheckOut] = useState<Ymd | null>(null);
+  const service = v.service;
+  const kind = v.kind ?? "window";
+  const nights = kind === "stay" ? diffDays(v.end_date, v.service_date) : 0;
+  const noun = kind === "stay" ? "stay" : kind === "day" ? "day" : "visit";
 
   const active = v.status === "scheduled" || v.status === "requested";
   const locked = new Date(v.start_time).getTime() - now < cutoffHours * 3_600_000;
@@ -114,10 +125,26 @@ function VisitCard({
 
   function openMove() {
     setPanel("move");
-    if (!availability) {
+    if (isMultiDay(v)) {
+      if (!days && service) {
+        const to = addDays(today, maxDaysAhead + (kind === "stay" ? service.max_nights : 0));
+        // Its own nights count as free while moving it.
+        getServiceDays(service.id, today, to).then((rows) =>
+          setDays(
+            rows.map((r) =>
+              r.service_date >= v.service_date && r.service_date < (kind === "stay" ? v.end_date : addDays(v.end_date, 1))
+                ? { ...r, remaining: r.remaining + 1 }
+                : r,
+            ),
+          ),
+        );
+      }
+    } else if (!availability) {
       getAvailability(today, addDays(today, maxDaysAhead)).then(setAvailability);
     }
   }
+
+  const ready = kind === "window" ? Boolean(date && windowId) : kind === "time" ? Boolean(date && minute != null) : kind === "stay" ? Boolean(date && checkOut) : Boolean(date);
 
   function addToCalendar() {
     const w = v.window_id ? windowMap.get(v.window_id) : undefined;
@@ -150,12 +177,10 @@ function VisitCard({
     <li className={cn("overflow-hidden rounded-3xl border border-ink-100 bg-white shadow-sm", !active && !past && "opacity-70")}>
       <div className="flex gap-4 p-4 sm:p-5">
         <div className="hidden w-16 shrink-0 flex-col items-center rounded-2xl bg-sea-50 py-2 text-center sm:flex">
-          <span className="text-xs font-extrabold text-ocean uppercase">
-            {new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(new Date(`${v.service_date}T12:00:00Z`))}
-          </span>
+          <span className="text-xs font-extrabold text-ocean uppercase">{formatYmd(v.service_date, { month: "short" })}</span>
           <span className="font-display text-2xl leading-none font-semibold">{Number(v.service_date.slice(8))}</span>
           <span className="text-xs font-bold text-ink-600">
-            {new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(new Date(`${v.service_date}T12:00:00Z`))}
+            {kind === "stay" ? `${nights} night${nights === 1 ? "" : "s"}` : formatYmd(v.service_date, { weekday: "short" })}
           </span>
         </div>
         <div className="min-w-0 flex-1">
@@ -169,7 +194,11 @@ function VisitCard({
             ) : null}
           </div>
           <p className="mt-0.5 font-bold text-ink">
-            <span className="sm:hidden">{longDate(v.service_date)} · </span>
+            {kind === "stay" ? (
+              <span className="block">{dateSpanLabel(v)}</span>
+            ) : (
+              <span className="sm:hidden">{longDate(v.service_date)} · </span>
+            )}
             {visitTimeLabel(v, windowMap, timeZone)}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink-600">
@@ -220,13 +249,13 @@ function VisitCard({
 
       {panel === "cancel" ? (
         <div className="space-y-3 border-t border-red-100 bg-red-50/40 p-4 sm:p-5">
-          <p className="font-extrabold">Cancel this visit?</p>
+          <p className="font-extrabold">Cancel this {noun}?</p>
           {v.series_id ? (
             <div className="flex flex-wrap gap-2 text-sm font-bold">
               {(["one", "following"] as const).map((s) => (
                 <label key={s} className="flex cursor-pointer items-center gap-2 rounded-full border-2 border-ink-100 bg-white px-3 py-1.5 has-[:checked]:border-ocean">
                   <input type="radio" className="accent-ocean" checked={scope === s} onChange={() => setScope(s)} />
-                  {s === "one" ? "Just this visit" : "This and all later visits"}
+                  {s === "one" ? `Just this ${noun}` : `This and all later ${noun}s`}
                 </label>
               ))}
             </div>
@@ -256,33 +285,78 @@ function VisitCard({
 
       {panel === "move" ? (
         <div className="space-y-4 border-t border-sea-200 bg-sea-50/40 p-4 sm:p-5">
-          <p className="font-extrabold">Pick a new day and time</p>
-          <DateWindowPicker
-            availability={availability ?? []}
-            loading={availability === null}
-            windows={[...windowMap.values()].filter((w) => w.active)}
-            today={today}
-            date={date}
-            windowId={windowId}
-            onChange={(d, w) => {
-              setDate(d);
-              setWindowId(w);
-            }}
-          />
+          <p className="font-extrabold">
+            {kind === "stay" ? `Pick new dates (currently ${nights} night${nights === 1 ? "" : "s"})` : kind === "day" ? "Pick a new day" : "Pick a new day and time"}
+          </p>
+          {kind === "window" ? (
+            <DateWindowPicker
+              availability={availability ?? []}
+              loading={availability === null}
+              windows={[...windowMap.values()].filter((w) => w.active)}
+              today={today}
+              date={date}
+              windowId={windowId}
+              onChange={(d, w) => {
+                setDate(d);
+                setWindowId(w);
+              }}
+            />
+          ) : kind === "time" && service ? (
+            <TimeSlotPicker
+              serviceId={service.id}
+              openDays={new Set((availability ?? []).filter((a) => a.remaining > 0).map((a) => a.service_date))}
+              today={today}
+              lastDay={addDays(today, maxDaysAhead)}
+              loading={availability === null}
+              date={date}
+              minute={minute}
+              onChange={(d, m) => {
+                setDate(d);
+                setMinute(m);
+              }}
+            />
+          ) : kind === "day" && service ? (
+            <DaysPicker
+              service={service}
+              days={days ?? []}
+              loading={days === null}
+              today={today}
+              lastStart={addDays(today, maxDaysAhead)}
+              selected={date ? [date] : []}
+              max={2}
+              onChange={(list) => setDate(list.length ? list[list.length - 1] : null)}
+            />
+          ) : kind === "stay" && service ? (
+            <StayPicker
+              service={service}
+              days={days ?? []}
+              loading={days === null}
+              today={today}
+              lastStart={addDays(today, maxDaysAhead)}
+              checkIn={date}
+              checkOut={checkOut}
+              onChange={(ci, co) => {
+                setDate(ci);
+                setCheckOut(co);
+              }}
+            />
+          ) : (
+            <p className="text-ink-600">Message us and we’ll move this one for you.</p>
+          )}
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="secondary"
-              disabled={pending || !date || !windowId}
+              disabled={pending || !ready}
               onClick={() =>
                 start(async () => {
-                  const r = await rescheduleVisit(v.id, date!, windowId!);
+                  const r = await rescheduleVisit(v.id, { date: date!, windowId, arrivalMinute: minute, endDate: checkOut });
                   onResult(r);
                   if (r.ok) setPanel(null);
                 })
               }
             >
-              {pending ? "Moving…" : "Move my visit"}
+              {pending ? "Moving…" : `Move my ${noun}`}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setPanel(null)}>
               Never mind

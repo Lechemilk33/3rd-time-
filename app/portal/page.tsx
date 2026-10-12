@@ -28,7 +28,7 @@ export default async function PortalHome() {
       .from("bookings")
       .select(BOOKING_DETAIL_SELECT)
       .eq("user_id", user.id)
-      .gte("service_date", today)
+      .gte("end_date", today)
       .in("status", ["scheduled", "requested"])
       .order("start_time")
       .limit(4),

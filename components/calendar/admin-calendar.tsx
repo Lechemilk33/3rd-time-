@@ -29,6 +29,9 @@ import { buttonClass } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import {
   clientName,
+  coversDay,
+  dateSpanLabel,
+  isMultiDay,
   petNames,
   visitTimeLabel,
   type BookingDetail,
@@ -36,7 +39,8 @@ import {
   type Walker,
 } from "@/lib/booking";
 import { CALENDAR_VIEWS, stepDate, viewTitle, type CalendarView } from "@/lib/calendar";
-import { daysBetween, formatYmd, minuteLabel, minutesToTimeInput, shortDate, timeToMinutes, type Ymd } from "@/lib/dates";
+import { addDays, daysBetween, diffDays, formatYmd, minuteLabel, minutesToTimeInput, shortDate, timeToMinutes, type Ymd } from "@/lib/dates";
+import type { FormField } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +72,7 @@ export function AdminCalendar({
   walkers,
   timeZone,
   initialOpenId,
+  fields,
 }: {
   view: CalendarView;
   date: Ymd;
@@ -83,6 +88,8 @@ export function AdminCalendar({
   walkers: Walker[];
   timeZone: string;
   initialOpenId: string | null;
+  /** Intake questions, to label the answers saved on bookings. */
+  fields: FormField[];
 }) {
   const router = useRouter();
   const [navigating, startNav] = useTransition();
@@ -229,8 +236,9 @@ export function AdminCalendar({
         arrival: timeToMinutes(b.arrival_time),
         walkerId: b.walker_id,
       };
-      const patch: Partial<BookingDetail> = { service_date: target.date };
-      if (target.minute !== undefined) {
+      const shift = diffDays(target.date, b.service_date);
+      const patch: Partial<BookingDetail> = { service_date: target.date, end_date: addDays(b.end_date ?? b.service_date, shift) };
+      if (target.minute !== undefined && !isMultiDay(b)) {
         patch.arrival_time = `${minutesToTimeInput(target.minute)}:00`;
         patch.window_id =
           windows.find((w) => w.active && target.minute! >= w.start_minute && target.minute! < w.end_minute)?.id ?? null;
@@ -242,14 +250,17 @@ export function AdminCalendar({
       }));
 
       const who = petNames(b.pets) || clientName(b);
-      const when = `${shortDate(target.date)}${target.minute !== undefined ? ` at ${minuteLabel(target.minute)}` : ""}`;
+      const when =
+        b.kind === "stay"
+          ? `${shortDate(target.date)} → ${shortDate(addDays(b.end_date, shift))}`
+          : `${shortDate(target.date)}${target.minute !== undefined && !isMultiDay(b) ? ` at ${minuteLabel(target.minute)}` : ""}`;
       const to = target.walkerId ? ` · ${walkerMap.get(target.walkerId)?.display_name}` : "";
 
       startAction(async () => {
         const res = await moveBooking({
           id: b.id,
           date: target.date,
-          arrivalMinute: target.minute ?? null,
+          arrivalMinute: isMultiDay(b) ? null : (target.minute ?? null),
           walkerId: target.walkerId ?? null,
           notify: null,
         });
@@ -310,6 +321,7 @@ export function AdminCalendar({
       today,
       windows: windowMap,
       walkers: walkerMap,
+      fields,
       isDimmed,
       open: (id) => {
         window.clearTimeout(showTimer.current);
@@ -347,7 +359,7 @@ export function AdminCalendar({
         }
       },
     }),
-    [timeZone, today, windowMap, walkerMap, isDimmed, move, create],
+    [timeZone, today, windowMap, walkerMap, fields, isDimmed, move, create],
   );
 
   const closeDrawer = useCallback(() => {
@@ -408,7 +420,7 @@ export function AdminCalendar({
   if (view === "week") {
     const days = daysBetween(from, to);
     const columns: GridColumn[] = days.map((d) => {
-      const n = visible.filter((b) => b.service_date === d).length;
+      const n = visible.filter((b) => coversDay(b, d)).length;
       return {
         key: d,
         date: d,
@@ -435,12 +447,22 @@ export function AdminCalendar({
         columns={columns}
         bookings={visible}
         columnOf={(b) => index.get(b.service_date) ?? -1}
+        spanOf={(b) => {
+          const end = b.end_date ?? b.service_date;
+          if (end < from || b.service_date > to) return null;
+          return {
+            start: index.get(b.service_date < from ? from : b.service_date) ?? 0,
+            end: index.get(end > to ? to : end) ?? days.length - 1,
+            clipStart: b.service_date < from,
+            clipEnd: end > to,
+          };
+        }}
         nowMinute={nowMinute}
         showWalker
       />
     );
   } else if (view === "day") {
-    const dayBookings = visible.filter((b) => b.service_date === date);
+    const dayBookings = visible.filter((b) => coversDay(b, date));
     const lanes = walkers.filter(
       (w) => !hidden.has(w.profile_id) && (w.active || dayBookings.some((b) => b.walker_id === w.profile_id)),
     );
@@ -486,11 +508,17 @@ export function AdminCalendar({
         : []),
     ];
     const laneIndex = new Map(lanes.map((w, i) => [w.profile_id, i]));
+    const laneOf = (b: BookingDetail) =>
+      b.walker_id && laneIndex.has(b.walker_id) ? laneIndex.get(b.walker_id)! : showUnassigned ? lanes.length : -1;
     body = columns.length ? (
       <TimeGrid
         columns={columns}
         bookings={dayBookings}
-        columnOf={(b) => (b.walker_id && laneIndex.has(b.walker_id) ? laneIndex.get(b.walker_id)! : showUnassigned ? lanes.length : -1)}
+        columnOf={laneOf}
+        spanOf={(b) => {
+          const lane = laneOf(b);
+          return lane < 0 ? null : { start: lane, end: lane, clipStart: b.service_date < date, clipEnd: (b.end_date ?? b.service_date) > date };
+        }}
         nowMinute={nowMinute}
         showWalker={false}
       />
@@ -500,7 +528,7 @@ export function AdminCalendar({
   } else if (view === "month") {
     body = <MonthGrid from={from} to={to} month={date.slice(0, 7)} bookings={visible} onShowDay={(d) => go("day", d)} />;
   } else {
-    body = <AgendaList bookings={visible} />;
+    body = <AgendaList bookings={visible} from={from} to={to} />;
   }
 
   const filterChips = [
@@ -645,6 +673,7 @@ export function AdminCalendar({
             <span className="inline-flex items-center gap-1.5">
               <span className="h-3 w-4 rounded-sm bg-sea-50" aria-hidden /> Arrival windows
             </span>
+            <span className="inline-flex items-center gap-1.5">🌙 Overnight · ☀️ Full day</span>
           </span>
           <span className="hidden items-center gap-1.5 lg:inline-flex">
             <Keyboard className="size-3.5" aria-hidden /> T today · ←/→ move · D W M A views · N new · / search · drag to reschedule
@@ -757,7 +786,7 @@ function RequestsButton({
                       {b.title} · {clientName(b)}
                     </span>
                     <span className="block truncate text-xs font-semibold text-ink-600">
-                      {shortDate(b.service_date)} · {visitTimeLabel(b, windows, timeZone)}
+                      {b.kind === "stay" ? dateSpanLabel(b) : shortDate(b.service_date)} · {visitTimeLabel(b, windows, timeZone)}
                     </span>
                   </span>
                 </button>
@@ -787,7 +816,7 @@ function RequestsButton({
           <div className="px-3 py-6 text-center">
             <CalendarDays className="mx-auto size-8 text-sea-300" aria-hidden />
             <p className="mt-2 font-bold">No requests waiting</p>
-            <p className="text-sm text-ink-600">Meet &amp; greet requests show up here.</p>
+            <p className="text-sm text-ink-600">Bookings that need your OK show up here.</p>
           </div>
         )
       }

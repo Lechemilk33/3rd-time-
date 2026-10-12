@@ -445,6 +445,16 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
 ];
 
+const WINDOW_VISIT = {
+  kind: "window",
+  price_unit: "visit",
+  daily_capacity: null,
+  start_minute: null,
+  end_minute: null,
+  min_nights: 1,
+  max_nights: 14,
+} as const;
+
 export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
   {
     name: "30-Minute Walk",
@@ -460,6 +470,7 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     audience: "approved",
     confirmation: "instant",
     max_pets: 3,
+    ...WINDOW_VISIT,
     position: 0,
   },
   {
@@ -476,6 +487,7 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     audience: "approved",
     confirmation: "instant",
     max_pets: 3,
+    ...WINDOW_VISIT,
     position: 1,
   },
   {
@@ -492,6 +504,7 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     audience: "approved",
     confirmation: "instant",
     max_pets: 3,
+    ...WINDOW_VISIT,
     position: 2,
   },
   {
@@ -508,6 +521,8 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     audience: "everyone",
     confirmation: "request",
     max_pets: 5,
+    ...WINDOW_VISIT,
+    kind: "time",
     position: 3,
   },
 ];

@@ -4,10 +4,11 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { isMovable, tint, useCalendar, walkerColor } from "@/components/calendar/context";
 import { StatusGlyph, WindowGlyph } from "@/components/calendar/event-bits";
-import { clientName, petNames, shortName, visitStartMinute, visitTimeLabel, type BookingDetail } from "@/lib/booking";
+import { clientName, isMultiDay, petNames, shortName, visitStartMinute, visitTimeLabel, type BookingDetail } from "@/lib/booking";
 import { layoutOverlaps, type LayoutBox } from "@/lib/calendar";
 import { minuteLabel, shortDate, type Ymd } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { AllDayLane } from "./all-day-lane";
 
 const PX = 1.2; // pixels per minute (72px per hour)
 const SNAP = 15;
@@ -29,18 +30,23 @@ type DragState = { id: string; col: number; minute: number };
 
 export function TimeGrid({
   columns,
-  bookings,
+  bookings: all,
   columnOf,
+  spanOf,
   nowMinute,
   showWalker,
 }: {
   columns: GridColumn[];
   bookings: BookingDetail[];
-  /** Which column index a booking belongs to (-1 = not shown). */
+  /** Which column index a timed booking belongs to (-1 = not shown). */
   columnOf: (b: BookingDetail) => number;
+  /** Columns a full-day / overnight booking covers (shown in the all-day lane). */
+  spanOf: (b: BookingDetail) => { start: number; end: number; clipStart: boolean; clipEnd: boolean } | null;
   nowMinute: number;
   showWalker: boolean;
 }) {
+  const bookings = useMemo(() => all.filter((b) => !isMultiDay(b)), [all]);
+  const ranged = useMemo(() => all.filter(isMultiDay), [all]);
   const cal = useCalendar();
   const windowMap = cal.windows;
   const colsRef = useRef<HTMLDivElement>(null);
@@ -227,6 +233,7 @@ export function TimeGrid({
             ))}
           </div>
         </div>
+        <AllDayLane columns={columns} bookings={ranged} spanOf={spanOf} />
 
         <div className="relative flex" style={{ height }}>
           {/* Hour labels + arrival windows */}

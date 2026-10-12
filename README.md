@@ -5,8 +5,8 @@ Ocean Beach, San Diego ([@waitingforpaws](https://www.instagram.com/waitingforpa
 
 - **Public website**: pages are built from sections the owner can add, reorder, hide and edit.
 - **Client portal** (`/portal`): clients sign up, add their pups (with photos), fill out a
-  service-aware intake form, book visits (one-off or weekly), reschedule or cancel, and pay with
-  Stripe.
+  service-aware intake form, book walks, appointments, full days or overnight stays (one-off or
+  weekly), reschedule or cancel, and pay with Stripe.
 - **Admin portal** (`/admin`): a live team calendar (day, week, month and agenda views with hover
   cards and drag-and-drop), booking for any client with search by pup, owner, phone or address,
   walkers’ availability and time off, plus editing every page, photo, price, color and intake
@@ -79,17 +79,29 @@ configuration is needed.
 
 Booking is built in — no third-party scheduler.
 
-- **How clients book:** they pick a service, their pup(s), a day and an **arrival window**
-  (e.g. Midday, 11 AM – 2 PM), and can repeat it weekly. New clients can only book services
-  marked “Anyone with an account” (the Meet & Greet); everything else unlocks once an admin
-  approves them (toggle on the client’s profile, or approve their intake form).
+- **Service types:** in **Admin → Services** each service picks how it’s booked:
+
+  | Type                   | Clients pick                                   | Capacity                              |
+  | ---------------------- | ---------------------------------------------- | ------------------------------------- |
+  | Visit in a time window | a day and a window (e.g. Midday, 11 AM – 2 PM) | walkers’ visits per window            |
+  | Set-time appointment   | a day and an exact start time (every 30 min)   | a walker free for the whole length    |
+  | Full day               | one or more days (drop-off / pick-up times)    | spots per day (blank = no limit)      |
+  | Overnight stay         | check-in and check-out dates (min/max nights)  | spots per night (check-out day free)  |
+
+  Prices can be per visit, hour, day, night or flat, and the booking summary estimates the total.
+- **How clients book:** pick a service, their pup(s), then the dates and times for that type;
+  window visits and appointments can repeat weekly. New clients can only book services marked
+  “Anyone with an account” (the Meet & Greet); everything else unlocks once an admin approves them
+  (toggle on the client’s profile, or approve their intake form).
 - **Capacity:** in **Admin → Schedule & availability** each walker sets how many visits they can
   take per window per weekday, plus time off. Bookings are checked and assigned atomically in the
   database (`book_visits`), so two people can never take the last spot. Clients keep the walker
   they know when possible.
-- **Calendar:** **Admin → Calendar** shows every visit color-coded by walker. Hover for details,
-  click for the full card (client, pups, access notes, actions), drag to pin an exact time, move
-  days or reassign walkers (Day view), click an empty slot to book. Updates live via Supabase
+- **Calendar:** **Admin → Calendar** shows every booking color-coded by walker. Full days and
+  stays sit in an all-day lane (bars across the week, or across the month) and in the agenda as
+  check-in / night N / check-out. Hover for details, click for the full card (client, pups,
+  access notes, booking answers, actions), drag to pin an exact time, move days (stays keep their
+  length) or reassign walkers (Day view), click an empty slot to book. Updates live via Supabase
   Realtime. Each admin can subscribe to a private iCal feed (`/api/calendar/<token>`) from
   Google or Apple Calendar.
 - **Emails** (confirmations, requests, changes, cancellations, evening-before reminders, each
@@ -102,9 +114,11 @@ Booking is built in — no third-party scheduler.
 
   Reminders run from a `pg_cron` job every hour. Use **Send a test** in Schedule & availability to
   check delivery.
-- **Intake per service:** one intake form for everyone; in **Admin → Intake form** any question can
-  be limited to specific services. Clients only answer what applies to them, and are asked the
-  rest when they add or first book a service.
+- **Intake & booking questions:** one intake form for everyone; in **Admin → Intake & questions**
+  each service has its own tab. A service’s questions are asked either **once** (on the intake
+  form, or the first time the client books it) or **every time they book** it (shown in the
+  booking flow and saved on that booking, e.g. “Feeding schedule for this stay”). Clients only
+  answer what applies to them.
 
 ### 5. Stripe (payments)
 
@@ -155,7 +169,7 @@ app/
 components/
   sections/          public renderers, one per section type
   admin/             page builder, schema-driven forms, gallery, form builder, schedule
-  booking/           booking wizard, date/window picker, client & pup search
+  booking/           booking wizard, day/time/stay pickers, client & pup search
   calendar/          admin calendar (time grid, month, agenda, hover card, drawer)
   portal/            client portal forms and visit list
 lib/

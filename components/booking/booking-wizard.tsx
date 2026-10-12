@@ -14,8 +14,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
-import { addService, bookVisits, getAvailability, type BookResult } from "@/app/portal/booking-actions";
+import { useActionState, useEffect, useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { addService, bookVisits, getAvailability, getServiceDays, type BookResult } from "@/app/portal/booking-actions";
 import { PetAvatar } from "@/components/calendar/event-bits";
 import { DynamicFormFields } from "@/components/forms/dynamic-form-fields";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -24,24 +24,44 @@ import { Field, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import {
+  estimateTotal,
   icsForVisits,
+  KIND_META,
+  serviceEndMinute,
+  servicePrice,
+  serviceStartMinute,
+  serviceTiming,
   SKIP_REASONS,
   windowRange,
   type Availability,
   type BookingPet,
   type BookingSettings,
   type BookingWindow,
+  type DayAvailability,
 } from "@/lib/booking";
-import { addDays, isoWeekday, longDate, shortDate, startOfWeek, zonedToDate, type Ymd } from "@/lib/dates";
-import { formatDuration, formatPrice } from "@/lib/format";
-import { fieldsForService, unansweredForService } from "@/lib/intake";
+import { addDays, diffDays, isoWeekday, longDate, minuteLabel, shortDate, startOfWeek, zonedToDate, type Ymd } from "@/lib/dates";
+import { formatMoney } from "@/lib/format";
+import { bookingQuestions, fieldsForService, unansweredForService } from "@/lib/intake";
 import type { ActionResult, FormAnswers, FormField, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DateWindowPicker } from "./date-window-picker";
+import { DaysPicker, StayPicker, TimeSlotPicker } from "./day-pickers";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const FORM_ID = "booking-details";
 
 export type WizardIntake = { fields: FormField[]; answers: FormAnswers; serviceIds: string[] };
+
+/** What the client picked, whatever the kind of service. */
+type When = {
+  date: Ymd | null;
+  windowId: string | null;
+  minute: number | null;
+  days: Ymd[];
+  checkOut: Ymd | null;
+};
+
+const EMPTY: When = { date: null, windowId: null, minute: null, days: [], checkOut: null };
 
 export function BookingWizard({
   services,
@@ -62,7 +82,7 @@ export function BookingWizard({
   approved: boolean;
   intake: WizardIntake;
   initialServiceId: string | null;
-  /** Upcoming visits: "date:windowId" -> pet ids, to avoid double-booking a pup. */
+  /** Upcoming window visits: "date:windowId" -> pet ids, to avoid double-booking a pup. */
   booked: Record<string, string[]>;
 }) {
   const bookable = services.filter((s) => s.bookable);
@@ -73,31 +93,48 @@ export function BookingWizard({
   });
   const [answered, setAnswered] = useState<Set<string>>(() => new Set());
   const [petIds, setPetIds] = useState<string[]>(() => (pets.length === 1 ? [pets[0].id] : []));
-  const [date, setDate] = useState<Ymd | null>(null);
-  const [windowId, setWindowId] = useState<string | null>(null);
+  const [when, setWhen] = useState<When>(EMPTY);
   const [repeat, setRepeat] = useState(false);
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [weeks, setWeeks] = useState(4);
   const [note, setNote] = useState("");
   const [availability, setAvailability] = useState<Availability[] | null>(null);
+  const [serviceDays, setServiceDays] = useState<{ id: string; rows: DayAvailability[] } | null>(null);
   const [result, setResult] = useState<BookResult | null>(null);
   const [pending, start] = useTransition();
   const [reload, setReload] = useState(0);
 
   const service = bookable.find((s) => s.id === serviceId) ?? null;
+  const kind = service?.kind ?? "window";
   const windowsById = useMemo(() => new Map(windows.map((w) => [w.id, w])), [windows]);
+  const lastStart = addDays(today, settings.max_days_ahead);
+  const ranged = kind === "day" || kind === "stay";
 
   useEffect(() => {
     let cancelled = false;
-    getAvailability(today, addDays(today, settings.max_days_ahead)).then((rows) => {
+    getAvailability(today, lastStart).then((rows) => {
       if (!cancelled) setAvailability(rows);
     });
     return () => {
       cancelled = true;
     };
-  }, [today, settings.max_days_ahead, reload]);
+  }, [today, lastStart, reload]);
 
-  // Intake questions for this service the client still needs to answer.
+  const rangedId = service && (service.kind === "day" || service.kind === "stay") ? service.id : null;
+  const rangeTo = service?.kind === "stay" ? addDays(lastStart, service.max_nights) : lastStart;
+  useEffect(() => {
+    if (!rangedId) return;
+    let cancelled = false;
+    getServiceDays(rangedId, today, rangeTo).then((rows) => {
+      if (!cancelled) setServiceDays({ id: rangedId, rows });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rangedId, today, rangeTo, reload]);
+  const days = serviceDays && serviceDays.id === rangedId ? serviceDays.rows : null;
+
+  // Intake questions for this service the client still needs to answer (asked once).
   const questions = service ? fieldsForService(intake.fields, service.id) : [];
   const needsQuestions =
     Boolean(service) &&
@@ -105,6 +142,8 @@ export function BookingWizard({
     questions.some((f) => f.type !== "heading") &&
     (!intake.serviceIds.includes(service!.id) ||
       unansweredForService(intake.fields, intake.answers, service!.id).some((f) => f.required));
+  // Questions asked on every booking of this service.
+  const perBooking = service ? bookingQuestions(intake.fields, service.id) : [];
 
   const blocked = useMemo(() => {
     const set = new Set<string>();
@@ -112,72 +151,116 @@ export function BookingWizard({
     return set;
   }, [booked, petIds]);
 
-  const dates = useMemo(() => {
+  const openDays = useMemo(() => {
+    const set = new Set<Ymd>();
+    for (const a of availability ?? []) if (a.remaining > 0) set.add(a.service_date);
+    return set;
+  }, [availability]);
+
+  const canRepeat = Boolean(service && service.confirmation === "instant" && (kind === "window" || kind === "time"));
+  const repeated = useMemo(() => {
+    const date = when.date;
     if (!date) return [];
-    if (!repeat) return [date];
-    const days = weekdays.length ? weekdays : [isoWeekday(date)];
+    if (!repeat || !canRepeat) return [date];
+    const picked = weekdays.length ? weekdays : [isoWeekday(date)];
     const monday = startOfWeek(date);
     const out: Ymd[] = [];
     for (let w = 0; w < weeks; w++) {
-      for (const d of [...days].sort()) {
+      for (const d of [...picked].sort()) {
         const day = addDays(monday, w * 7 + d - 1);
         if (day >= date) out.push(day);
       }
     }
     return out;
-  }, [date, repeat, weekdays, weeks]);
+  }, [when.date, repeat, canRepeat, weekdays, weeks]);
 
   const slotState = (d: Ymd): "open" | "full" | "closed" | "booked" => {
-    if (!windowId) return "closed";
-    if (blocked.has(`${d}:${windowId}`)) return "booked";
-    const a = availability?.find((r) => r.service_date === d && r.window_id === windowId);
+    if (kind === "time") return openDays.has(d) ? "open" : "closed";
+    if (!when.windowId) return "closed";
+    if (blocked.has(`${d}:${when.windowId}`)) return "booked";
+    const a = availability?.find((r) => r.service_date === d && r.window_id === when.windowId);
     if (!a) return "closed";
     return a.remaining > 0 ? "open" : "full";
   };
-  const openDates = dates.filter((d) => slotState(d) === "open");
 
-  const step = !service ? 1 : needsQuestions ? 2 : !petIds.length ? 3 : !date || !windowId ? 4 : 5;
+  // The dates that will be sent, and whether the "when" step is complete.
+  const dates: Ymd[] =
+    kind === "day" ? [...when.days].sort() : kind === "stay" ? (when.date ? [when.date] : []) : repeated.filter((d) => slotState(d) === "open");
+  const picked =
+    kind === "window"
+      ? Boolean(when.date && when.windowId)
+      : kind === "time"
+        ? Boolean(when.date && when.minute != null)
+        : kind === "day"
+          ? when.days.length > 0
+          : Boolean(when.date && when.checkOut);
+  const nights = kind === "stay" && when.date && when.checkOut ? diffDays(when.checkOut, when.date) : 0;
+  const ready = Boolean(service && !needsQuestions && petIds.length && picked && dates.length);
 
-  function reset(keepService = true) {
+  function pickService(id: string | null) {
+    setServiceId(id);
+    setWhen(EMPTY);
+    setRepeat(false);
     setResult(null);
-    setDate(null);
-    setWindowId(null);
+  }
+
+  function reset() {
+    setResult(null);
+    setWhen(EMPTY);
     setRepeat(false);
     setNote("");
-    if (!keepService) setServiceId(null);
     setReload((n) => n + 1);
   }
 
-  function submit() {
-    if (!service || !windowId) return;
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!service || !ready) return;
+    const answers = new FormData(e.currentTarget);
     start(async () => {
-      const res = await bookVisits({ serviceId: service.id, petIds, dates: openDates, windowId, note });
+      const res = await bookVisits(
+        {
+          serviceId: service.id,
+          petIds,
+          dates,
+          windowId: kind === "window" ? when.windowId : null,
+          arrivalMinute: kind === "time" ? when.minute : null,
+          endDate: kind === "stay" ? when.checkOut : null,
+          note,
+        },
+        answers,
+      );
       setResult(res);
       if (res.ok) window.scrollTo({ top: 0, behavior: "smooth" });
+      else setReload((n) => n + 1);
     });
   }
 
-  if (result?.ok && service && windowId) {
+  if (result?.ok && service) {
     return (
       <BookedCard
         result={result}
         service={service}
-        window={windowsById.get(windowId)!}
+        when={when}
+        window={when.windowId ? windowsById.get(when.windowId) : undefined}
         pets={pets.filter((p) => petIds.includes(p.id))}
         timeZone={settings.timezone}
-        onAnother={() => reset()}
+        onAnother={reset}
       />
     );
   }
 
+  let n = 1;
+  const total = service ? estimateTotal(service, { nights, days: dates.length, visits: dates.length }) : null;
+  const whenTitle = kind === "stay" ? "Pick your dates" : kind === "day" ? "Pick your days" : kind === "time" ? "Pick a day and time" : "Pick a day and time";
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_19rem]">
       <div className="space-y-5">
-        {/* 1. Service */}
-        <Step n={1} title="What do you need?" done={Boolean(service)} summary={service?.name} onEdit={() => setServiceId(null)}>
+        {/* Service */}
+        <Step n={n++} title="What do you need?" done={Boolean(service)} summary={service?.name} onEdit={() => pickService(null)}>
           {!approved ? (
             <Notice tone="info" className="mb-4" title="New here? Start with a meet & greet.">
-              We’ll come say hi, meet your pup and learn the routine. Regular walks unlock right after.
+              We’ll come say hi, meet your pup and learn the routine. Everything else unlocks right after.
             </Notice>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -188,22 +271,25 @@ export function BookingWizard({
                   key={s.id}
                   type="button"
                   disabled={locked}
-                  onClick={() => setServiceId(s.id)}
+                  onClick={() => pickService(s.id)}
                   className={cn(
                     "group relative rounded-2xl border-2 p-4 text-left transition",
                     locked ? "cursor-not-allowed border-dashed border-ink-100 bg-ink-100/20" : "border-ink-100 bg-white hover:-translate-y-0.5 hover:border-ocean hover:shadow-md",
                   )}
                 >
                   <span className="flex items-start justify-between gap-2">
-                    <span className="font-display text-lg font-semibold">{s.name}</span>
+                    <span className="font-display text-lg font-semibold">
+                      <span className="mr-1.5" aria-hidden>
+                        {KIND_META[s.kind].emoji}
+                      </span>
+                      {s.name}
+                    </span>
                     {locked ? <Lock className="size-4 shrink-0 text-ink-400" aria-label="Locked" /> : null}
                     {!locked && s.confirmation === "request" ? (
                       <span className="shrink-0 rounded-full bg-sun-100 px-2 py-0.5 text-[11px] font-extrabold">We confirm</span>
                     ) : null}
                   </span>
-                  <span className="mt-0.5 block text-sm font-bold text-ocean">
-                    {[formatPrice(s.price_cents, s.price_label), formatDuration(s.duration_minutes)].filter(Boolean).join(" · ")}
-                  </span>
+                  <span className="mt-0.5 block text-sm font-bold text-ocean">{[servicePrice(s), serviceTiming(s)].filter(Boolean).join(" · ")}</span>
                   {s.description ? <span className="mt-2 line-clamp-2 block text-sm text-ink-600">{s.description}</span> : null}
                   {locked ? <span className="mt-2 block text-xs font-bold text-ink-400">Unlocks after your meet &amp; greet</span> : null}
                 </button>
@@ -212,9 +298,9 @@ export function BookingWizard({
           </div>
         </Step>
 
-        {/* 2. Service questions */}
+        {/* Service questions (asked once) */}
         {service && needsQuestions ? (
-          <Step n={2} title={`A few questions about ${service.name}`} done={false}>
+          <Step n={n++} title={`A few questions about ${service.name}`} done={false}>
             <ServiceQuestions
               key={service.id}
               service={service}
@@ -225,9 +311,9 @@ export function BookingWizard({
           </Step>
         ) : null}
 
-        {/* 3. Pups */}
+        {/* Pups */}
         {service && !needsQuestions ? (
-          <Step n={2} title="Who’s coming along?" done={false}>
+          <Step n={n++} title={kind === "stay" ? "Who’s staying?" : "Who’s coming along?"} done={false}>
             {pets.length ? (
               <>
                 <div className="flex flex-wrap gap-3">
@@ -255,14 +341,16 @@ export function BookingWizard({
                   })}
                 </div>
                 {service.max_pets < pets.length ? (
-                  <p className="mt-3 text-sm text-ink-600">Up to {service.max_pets} pups per visit.</p>
+                  <p className="mt-3 text-sm text-ink-600">
+                    Up to {service.max_pets} pups per {ranged ? "booking" : "visit"}.
+                  </p>
                 ) : null}
               </>
             ) : (
               <div className="rounded-2xl border-2 border-dashed border-sea-200 bg-sea-50 p-5 text-center">
                 <PawPrint className="mx-auto size-8 text-sea-300" aria-hidden />
                 <p className="mt-2 font-bold">Add your pup first</p>
-                <p className="text-sm text-ink-600">So we know who we’re walking!</p>
+                <p className="text-sm text-ink-600">So we know who we’re caring for!</p>
                 <ButtonLink href="/portal/pets/new" size="sm" className="mt-3">
                   Add a pup
                 </ButtonLink>
@@ -271,106 +359,159 @@ export function BookingWizard({
           </Step>
         ) : null}
 
-        {/* 4. Day & time */}
+        {/* When */}
         {service && !needsQuestions && petIds.length ? (
-          <Step n={3} title="Pick a day and time" done={false}>
-            <DateWindowPicker
-              availability={availability ?? []}
-              loading={availability === null}
-              windows={windows}
-              today={today}
-              date={date}
-              windowId={windowId}
-              blocked={blocked}
-              onChange={(d, w) => {
-                setDate(d);
-                setWindowId(w);
-                setWeekdays([isoWeekday(d)]);
-              }}
-            />
+          <Step n={n++} title={whenTitle} done={false}>
+            {kind === "window" ? (
+              <DateWindowPicker
+                availability={availability ?? []}
+                loading={availability === null}
+                windows={windows}
+                today={today}
+                date={when.date}
+                windowId={when.windowId}
+                blocked={blocked}
+                onChange={(d, w) => {
+                  setWhen({ ...EMPTY, date: d, windowId: w });
+                  setWeekdays([isoWeekday(d)]);
+                }}
+              />
+            ) : kind === "time" ? (
+              <TimeSlotPicker
+                serviceId={service.id}
+                openDays={openDays}
+                today={today}
+                lastDay={lastStart}
+                loading={availability === null}
+                date={when.date}
+                minute={when.minute}
+                onChange={(d, m) => {
+                  setWhen({ ...EMPTY, date: d, minute: m });
+                  setWeekdays([isoWeekday(d)]);
+                }}
+              />
+            ) : kind === "day" ? (
+              <DaysPicker
+                service={service}
+                days={days ?? []}
+                loading={days === null}
+                today={today}
+                lastStart={lastStart}
+                selected={when.days}
+                onChange={(list) => setWhen({ ...EMPTY, days: list })}
+              />
+            ) : (
+              <StayPicker
+                service={service}
+                days={days ?? []}
+                loading={days === null}
+                today={today}
+                lastStart={lastStart}
+                checkIn={when.date}
+                checkOut={when.checkOut}
+                onChange={(ci, co) => setWhen({ ...EMPTY, date: ci, checkOut: co })}
+              />
+            )}
           </Step>
         ) : null}
 
-        {/* 5. Repeat + notes */}
-        {step === 5 && service ? (
-          <Step n={4} title="Make it a regular thing?" done={false}>
-            {service.confirmation === "instant" ? (
-              <div className="space-y-4">
-                <label className="flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-ink-100 p-4 has-[:checked]:border-ocean has-[:checked]:bg-sea-50">
-                  <input type="checkbox" className="size-5 accent-ocean" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
-                  <Repeat className="size-5 text-ocean" aria-hidden />
-                  <span>
-                    <span className="block font-extrabold">Repeat every week</span>
-                    <span className="block text-sm text-ink-600">Same time, on the days you pick. Cancel any single visit later.</span>
-                  </span>
-                </label>
-                {repeat ? (
-                  <div className="space-y-4 rounded-2xl bg-sea-50/60 p-4">
-                    <div>
-                      <p className="mb-2 text-sm font-bold">On these days</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {WEEKDAYS.map((label, i) => {
-                          const d = i + 1;
-                          const on = weekdays.includes(d);
+        {/* Details */}
+        {service && !needsQuestions && petIds.length && picked ? (
+          <Step n={n++} title={canRepeat ? "Make it a regular thing?" : "Anything else?"} done={false}>
+            <form id={FORM_ID} onSubmit={submit} className="space-y-5">
+              {canRepeat ? (
+                <div className="space-y-4">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-ink-100 p-4 has-[:checked]:border-ocean has-[:checked]:bg-sea-50">
+                    <input type="checkbox" className="size-5 accent-ocean" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+                    <Repeat className="size-5 text-ocean" aria-hidden />
+                    <span>
+                      <span className="block font-extrabold">Repeat every week</span>
+                      <span className="block text-sm text-ink-600">Same time, on the days you pick. Cancel any single visit later.</span>
+                    </span>
+                  </label>
+                  {repeat ? (
+                    <div className="space-y-4 rounded-2xl bg-sea-50/60 p-4">
+                      <div>
+                        <p className="mb-2 text-sm font-bold">On these days</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {WEEKDAYS.map((label, i) => {
+                            const d = i + 1;
+                            const on = weekdays.includes(d);
+                            return (
+                              <button
+                                key={label}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => setWeekdays((cur) => (on ? (cur.length > 1 ? cur.filter((x) => x !== d) : cur) : [...cur, d]))}
+                                className={cn("h-11 min-w-12 rounded-full px-3 text-sm font-extrabold transition", on ? "bg-ink text-white" : "bg-white text-ink-600 hover:bg-sea-100")}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <Field label="For" htmlFor="wk" className="max-w-48">
+                        <Select id="wk" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
+                          {[2, 4, 6, 8, 12].map((w) => (
+                            <option key={w} value={w}>
+                              {w} weeks
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <ul className="flex flex-wrap gap-1.5">
+                        {repeated.map((d) => {
+                          const st = slotState(d);
                           return (
-                            <button
-                              key={label}
-                              type="button"
-                              aria-pressed={on}
-                              onClick={() => setWeekdays((cur) => (on ? (cur.length > 1 ? cur.filter((x) => x !== d) : cur) : [...cur, d]))}
-                              className={cn("h-11 min-w-12 rounded-full px-3 text-sm font-extrabold transition", on ? "bg-ink text-white" : "bg-white text-ink-600 hover:bg-sea-100")}
+                            <li
+                              key={d}
+                              className={cn(
+                                "rounded-full px-2.5 py-1 text-xs font-bold",
+                                st === "open" ? "bg-white text-ink ring-1 ring-ocean/30" : "bg-ink-100/60 text-ink-400 line-through",
+                              )}
+                              title={st === "open" ? "Open" : st === "booked" ? "Already booked" : st === "full" ? "Full" : "Not available"}
                             >
-                              {label}
-                            </button>
+                              {shortDate(d)}
+                            </li>
                           );
                         })}
-                      </div>
+                      </ul>
+                      <p className="text-sm text-ink-600">
+                        {kind === "time"
+                          ? "If that time is taken on a date, we’ll skip it and let you know."
+                          : dates.length < repeated.length
+                            ? "Crossed-out dates are full or unavailable and will be skipped."
+                            : "All of these are open."}
+                      </p>
                     </div>
-                    <Field label="For" htmlFor="wk" className="max-w-48">
-                      <Select id="wk" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
-                        {[2, 4, 6, 8, 12].map((n) => (
-                          <option key={n} value={n}>
-                            {n} weeks
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <ul className="flex flex-wrap gap-1.5">
-                      {dates.map((d) => {
-                        const st = slotState(d);
-                        return (
-                          <li
-                            key={d}
-                            className={cn(
-                              "rounded-full px-2.5 py-1 text-xs font-bold",
-                              st === "open" ? "bg-white text-ink ring-1 ring-ocean/30" : "bg-ink-100/60 text-ink-400 line-through",
-                            )}
-                            title={st === "open" ? "Open" : st === "booked" ? "Already booked" : st === "full" ? "Full" : "Not available"}
-                          >
-                            {shortDate(d)}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {openDates.length < dates.length ? (
-                      <p className="text-sm text-ink-600">Crossed-out dates are full or unavailable and will be skipped.</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <p className="text-ink-600">This one’s a single visit — we’ll confirm it with you.</p>
-            )}
-            <Field label="Anything we should know for this visit?" htmlFor="note" className="mt-5">
-              <Textarea
-                id="note"
-                rows={3}
-                value={note}
-                maxLength={1000}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Gate code changed, extra treats, leash is by the door…"
-              />
-            </Field>
+                  ) : null}
+                </div>
+              ) : service.confirmation === "request" ? (
+                <p className="text-ink-600">We’ll confirm this with you by email.</p>
+              ) : null}
+
+              {perBooking.length ? (
+                <div className="space-y-4 rounded-2xl border border-ink-100 p-4 sm:p-5">
+                  <p className="flex items-start gap-2 font-bold">
+                    <ClipboardList className="mt-0.5 size-5 shrink-0 text-ocean" aria-hidden />
+                    {kind === "stay" ? "For this stay" : dates.length > 1 ? "For these visits" : "For this booking"}
+                  </p>
+                  <DynamicFormFields key={service.id} fields={perBooking} answers={{}} />
+                </div>
+              ) : null}
+
+              <Field label={kind === "stay" ? "Anything else we should know for this stay?" : "Anything we should know?"} htmlFor="note">
+                <Textarea
+                  id="note"
+                  rows={3}
+                  value={note}
+                  maxLength={1000}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={kind === "stay" ? "Bedtime routine, favorite toy, who to call…" : "Gate code changed, extra treats, leash is by the door…"}
+                />
+              </Field>
+            </form>
           </Step>
         ) : null}
       </div>
@@ -384,33 +525,31 @@ export function BookingWizard({
             <Row label="Pups">
               {petIds.length ? pets.filter((p) => petIds.includes(p.id)).map((p) => p.name).join(" & ") : <span className="text-ink-400">—</span>}
             </Row>
-            <Row label={openDates.length > 1 ? `${openDates.length} visits` : "When"}>
-              {date && windowId ? (
-                <>
-                  {openDates.length > 1 ? `Starting ${shortDate(openDates[0])}` : longDate(date)}
-                  <span className="block font-semibold text-ink-600">
-                    {windowsById.get(windowId)?.label} · {windowRange(windowsById.get(windowId)!)}
-                  </span>
-                </>
-              ) : (
-                <span className="text-ink-400">—</span>
-              )}
+            <Row label={kind === "stay" ? "Dates" : dates.length > 1 ? `${dates.length} ${kind === "day" ? "days" : "visits"}` : "When"}>
+              {service && picked ? <WhenSummary service={service} when={when} dates={dates} nights={nights} windowsById={windowsById} /> : <span className="text-ink-400">—</span>}
             </Row>
-            {service?.price_cents != null && openDates.length ? (
+            {service?.price_cents != null && picked && dates.length ? (
               <Row label="Price">
-                {formatPrice(service.price_cents, service.price_label)}
-                {openDates.length > 1 && service.price_cents ? (
+                {servicePrice(service)}
+                {total != null && total !== service.price_cents ? (
                   <span className="block font-semibold text-ink-600">
-                    About {formatPrice(service.price_cents * openDates.length, null)} for {openDates.length} visits
+                    About {formatMoney(total)} for{" "}
+                    {kind === "stay" ? `${nights} nights` : `${dates.length} ${kind === "day" ? "days" : "visits"}`}
                   </span>
                 ) : null}
               </Row>
             ) : null}
           </dl>
           {result?.error ? <Notice tone="error">{result.error}</Notice> : null}
-          <Button className="w-full" size="lg" disabled={step < 5 || !openDates.length || pending} onClick={submit}>
+          <Button type="submit" form={FORM_ID} className="w-full" size="lg" disabled={!ready || pending}>
             {pending ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : null}
-            {service?.confirmation === "request" ? "Send request" : openDates.length > 1 ? `Book ${openDates.length} visits` : "Book it"}
+            {service?.confirmation === "request"
+              ? "Send request"
+              : kind === "stay"
+                ? "Book the stay"
+                : dates.length > 1
+                  ? `Book ${dates.length} ${kind === "day" ? "days" : "visits"}`
+                  : "Book it"}
           </Button>
           <p className="text-center text-xs text-ink-400">
             Free to cancel up to {settings.cancel_cutoff_hours} hours before. Payment is handled after your visit.
@@ -418,6 +557,49 @@ export function BookingWizard({
         </Card>
       </aside>
     </div>
+  );
+}
+
+function WhenSummary({
+  service,
+  when,
+  dates,
+  nights,
+  windowsById,
+}: {
+  service: Service;
+  when: When;
+  dates: Ymd[];
+  nights: number;
+  windowsById: Map<string, BookingWindow>;
+}) {
+  if (service.kind === "stay" && when.date && when.checkOut) {
+    return (
+      <>
+        {shortDate(when.date)} → {shortDate(when.checkOut)}
+        <span className="block font-semibold text-ink-600">
+          {nights} night{nights === 1 ? "" : "s"} · in {minuteLabel(serviceStartMinute(service))}, out {minuteLabel(serviceEndMinute(service))}
+        </span>
+      </>
+    );
+  }
+  if (service.kind === "day") {
+    return (
+      <>
+        {dates.length > 3 ? `${dates.slice(0, 3).map(shortDate).join(", ")} +${dates.length - 3}` : dates.map(shortDate).join(", ")}
+        <span className="block font-semibold text-ink-600">{serviceTiming(service)}</span>
+      </>
+    );
+  }
+  if (!when.date) return null;
+  const w = when.windowId ? windowsById.get(when.windowId) : undefined;
+  return (
+    <>
+      {dates.length > 1 ? `Starting ${shortDate(dates[0])}` : longDate(when.date)}
+      <span className="block font-semibold text-ink-600">
+        {service.kind === "time" && when.minute != null ? minuteLabel(when.minute) : w ? `${w.label} · ${windowRange(w)}` : null}
+      </span>
+    </>
   );
 }
 
@@ -494,7 +676,7 @@ function ServiceQuestions({
     <form action={action} className="space-y-5">
       <p className="flex items-start gap-2 text-ink-600">
         <ClipboardList className="mt-0.5 size-5 shrink-0 text-ocean" aria-hidden />
-        These help your walker take great care of your pup. We’ll save them to your intake form.
+        These help us take great care of your pup. We’ll save them to your intake form so you only answer once.
       </p>
       <DynamicFormFields fields={fields} answers={answers} />
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
@@ -506,6 +688,7 @@ function ServiceQuestions({
 function BookedCard({
   result,
   service,
+  when,
   window: w,
   pets,
   timeZone,
@@ -513,22 +696,42 @@ function BookedCard({
 }: {
   result: BookResult;
   service: Service;
-  window: BookingWindow;
+  when: When;
+  window?: BookingWindow;
   pets: BookingPet[];
   timeZone: string;
   onAnother: () => void;
 }) {
   const requested = result.status === "requested";
   const created = result.created ?? [];
+  const kind = service.kind;
+  const nights = kind === "stay" && when.date && when.checkOut ? diffDays(when.checkOut, when.date) : 0;
+
+  const span = (date: Ymd, endDate: Ymd) => {
+    if (kind === "day" || kind === "stay") {
+      return {
+        start: zonedToDate(date, serviceStartMinute(service), timeZone),
+        end: zonedToDate(endDate, serviceEndMinute(service), timeZone),
+        description: kind === "stay" ? `Check-in from ${minuteLabel(serviceStartMinute(service))}, check-out by ${minuteLabel(serviceEndMinute(service))}.` : `Drop-off ${serviceTiming(service)}.`,
+      };
+    }
+    if (kind === "time" && when.minute != null) {
+      const start = zonedToDate(date, when.minute, timeZone);
+      return { start, end: new Date(start.getTime() + (service.duration_minutes ?? 30) * 60_000), description: undefined };
+    }
+    return {
+      start: zonedToDate(date, w?.start_minute ?? 540, timeZone),
+      end: zonedToDate(date, w?.end_minute ?? 600, timeZone),
+      description: w ? `Waiting for Paws will arrive between ${windowRange(w)}.` : undefined,
+    };
+  };
 
   function downloadIcs() {
     const ics = icsForVisits(
       created.map((c) => ({
         id: c.id,
         title: `🐾 ${service.name} · ${pets.map((p) => p.name).join(" & ")}`,
-        start: zonedToDate(c.date, w.start_minute, timeZone),
-        end: zonedToDate(c.date, w.end_minute, timeZone),
-        description: `Waiting for Paws will arrive between ${windowRange(w)}.`,
+        ...span(c.date, c.end_date ?? c.date),
       })),
     );
     const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
@@ -538,6 +741,18 @@ function BookedCard({
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  const detail =
+    kind === "stay" && when.date && when.checkOut
+      ? `${shortDate(when.date)} → ${shortDate(when.checkOut)} · ${nights} night${nights === 1 ? "" : "s"}`
+      : kind === "day"
+        ? serviceTiming(service)
+        : kind === "time" && when.minute != null
+          ? `at ${minuteLabel(when.minute)}`
+          : w
+            ? `${w.label}, ${windowRange(w)}`
+            : "";
+  const noun = kind === "stay" ? "stay" : kind === "day" ? "day" : "visit";
 
   return (
     <Card className="mx-auto max-w-2xl overflow-hidden p-0 text-center sm:p-0">
@@ -549,20 +764,23 @@ function BookedCard({
         <p className="mx-auto mt-2 max-w-md text-ink-600">
           {requested
             ? "We’ll confirm by email shortly. You can see it under My visits in the meantime."
-            : `${created.length === 1 ? "Your visit is" : `${created.length} visits are`} on the calendar. A confirmation is on its way to your inbox.`}
+            : `${created.length === 1 ? `Your ${noun} is` : `${created.length} ${noun}s are`} on the calendar. A confirmation is on its way to your inbox.`}
         </p>
       </div>
       <div className="space-y-5 p-6">
-        <ul className="flex flex-wrap justify-center gap-2">
-          {created.slice(0, 16).map((c) => (
-            <li key={c.id} className="rounded-full bg-sea-50 px-3 py-1 text-sm font-bold">
-              {shortDate(c.date)}
-            </li>
-          ))}
-          {created.length > 16 ? <li className="px-2 py-1 text-sm font-bold text-ink-400">+{created.length - 16} more</li> : null}
-        </ul>
+        {kind !== "stay" ? (
+          <ul className="flex flex-wrap justify-center gap-2">
+            {created.slice(0, 16).map((c) => (
+              <li key={c.id} className="rounded-full bg-sea-50 px-3 py-1 text-sm font-bold">
+                {shortDate(c.date)}
+              </li>
+            ))}
+            {created.length > 16 ? <li className="px-2 py-1 text-sm font-bold text-ink-400">+{created.length - 16} more</li> : null}
+          </ul>
+        ) : null}
         <p className="font-bold">
-          {service.name} · {w.label}, {windowRange(w)}
+          {service.name}
+          {detail ? ` · ${detail}` : ""}
         </p>
         {result.skipped?.length ? (
           <Notice tone="warning" className="text-left" title="Some dates were skipped">

@@ -5,6 +5,7 @@ import { Notice } from "@/components/ui/notice";
 import { requireUser } from "@/lib/auth";
 import { getForm } from "@/lib/content";
 import { formatDate } from "@/lib/format";
+import { askedEachBooking } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
 import type { FormSubmission } from "@/lib/types";
 
@@ -31,7 +32,7 @@ export default async function IntakePage() {
     supabase.from("form_submissions").select("*").eq("form_slug", form.slug).eq("user_id", user.id).maybeSingle<FormSubmission>(),
     supabase
       .from("services")
-      .select("id, name, description, price_cents, price_label, duration_minutes")
+      .select("id, name, description, price_cents, price_label, price_unit, duration_minutes, kind, start_minute, end_minute")
       .eq("active", true)
       .order("position"),
   ]);
@@ -50,7 +51,7 @@ export default async function IntakePage() {
         }
       />
       <IntakeForm
-        fields={form.fields}
+        fields={form.fields.filter((f) => !askedEachBooking(f))}
         answers={submission?.answers ?? {}}
         services={servicesRes.data ?? []}
         selectedServiceIds={submission?.service_ids ?? []}

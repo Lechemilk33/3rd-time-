@@ -106,9 +106,28 @@ comment on column public.services.audience is
 comment on column public.services.confirmation is
   'instant: booked right away; request: an admin confirms or declines';
 
--- Meet & greets are open to new clients and need a quick confirmation.
+-- How each service is booked:
+--   window = a visit in an arrival window (walks, drop-ins)
+--   time   = an appointment at a set time (meet & greets, pet taxi)
+--   day    = a full day (daycare, adventure days)
+--   stay   = overnight, check-in to check-out (house sitting, boarding)
+alter table public.services
+  add column kind text not null default 'window' check (kind in ('window', 'time', 'day', 'stay')),
+  add column price_unit text not null default 'visit' check (price_unit in ('visit', 'hour', 'day', 'night', 'flat')),
+  add column daily_capacity smallint check (daily_capacity between 1 and 100),
+  add column start_minute int check (start_minute between 0 and 1439),
+  add column end_minute int check (end_minute between 0 and 1439),
+  add column min_nights smallint not null default 1 check (min_nights between 1 and 60),
+  add column max_nights smallint not null default 14 check (max_nights between 1 and 90);
+
+comment on column public.services.daily_capacity is
+  'Full-day and overnight services: how many can be booked per day/night (null = no limit)';
+comment on column public.services.start_minute is 'Full day: drop-off time. Overnight: check-in time.';
+comment on column public.services.end_minute is 'Full day: pick-up time. Overnight: check-out time.';
+
+-- Meet & greets are open to new clients, happen at a set time and need a quick confirmation.
 update public.services
-set audience = 'everyone', confirmation = 'request', max_pets = 5
+set audience = 'everyone', confirmation = 'request', max_pets = 5, kind = 'time'
 where name ilike 'meet%greet%';
 
 -- Approved clients can book regular visits (set by an admin).
@@ -176,6 +195,32 @@ create index bookings_slot_idx on public.bookings (service_date, window_id) wher
 create index bookings_walker_date_idx on public.bookings (walker_id, service_date);
 create index bookings_series_idx on public.bookings (series_id) where series_id is not null;
 create index bookings_status_start_idx on public.bookings (status, start_time);
+
+-- Full days and overnight stays: end_date is the last day (check-out day for stays).
+-- answers holds the intake questions asked on every booking of a service.
+alter table public.bookings
+  add column kind text not null default 'window' check (kind in ('window', 'time', 'day', 'stay')),
+  add column end_date date,
+  add column answers jsonb not null default '{}'::jsonb;
+
+create index bookings_range_idx on public.bookings (service_id, service_date, end_date)
+  where status in ('requested', 'scheduled');
+
+create or replace function private.bookings_defaults()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.end_date is null or new.end_date < new.service_date then
+    new.end_date := new.service_date;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger bookings_defaults before insert or update on public.bookings
+  for each row execute function private.bookings_defaults();
 
 create table public.booking_pets (
   booking_id uuid not null references public.bookings (id) on delete cascade,
@@ -404,6 +449,207 @@ begin
 end;
 $$;
 
+-- Minutes after midnight (business time) of an absolute time.
+create or replace function private.local_minute(p_ts timestamptz)
+returns int
+language sql
+stable
+set search_path = ''
+as $$
+  select (extract(hour from p_ts at time zone private.booking_tz()) * 60
+        + extract(minute from p_ts at time zone private.booking_tz()))::int;
+$$;
+
+-- Default drop-off / check-in and pick-up / check-out times for full-day and overnight services.
+create or replace function private.service_start_minute(p_service public.services)
+returns int
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(p_service.start_minute, case when p_service.kind = 'stay' then 17 * 60 else 8 * 60 end);
+$$;
+
+create or replace function private.service_end_minute(p_service public.services)
+returns int
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(p_service.end_minute, case when p_service.kind = 'stay' then 10 * 60 else 17 * 60 end);
+$$;
+
+-- Closed for everyone that day (business-wide all-day time off, or every walker is off).
+create or replace function private.day_closed(p_date date)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select exists (
+      select 1 from public.time_off t
+      where t.walker_id is null and t.window_id is null and p_date between t.start_date and t.end_date
+    )
+    or not exists (
+      select 1 from public.walkers k
+      where k.active
+        and not exists (
+          select 1 from public.time_off t
+          where t.walker_id = k.profile_id and t.window_id is null and p_date between t.start_date and t.end_date
+        )
+    );
+$$;
+
+-- Bookings of a full-day/overnight service that use a given day (stays use nights: check-in up to,
+-- not including, check-out).
+create or replace function private.service_booked(p_service uuid, p_date date, p_exclude uuid default null)
+returns int
+language sql
+stable
+set search_path = ''
+as $$
+  select count(*)::int from public.bookings b
+  where b.service_id = p_service
+    and b.status in ('requested', 'scheduled')
+    and b.id is distinct from p_exclude
+    and p_date >= b.service_date
+    and p_date < case when b.kind = 'stay' then greatest(b.end_date, b.service_date + 1) else b.end_date + 1 end;
+$$;
+
+-- Why a full day / stay can't be booked (or null). p_timing = false skips notice/limits (admins).
+create or replace function private.range_problem(
+  p_service public.services,
+  p_start date,
+  p_end date,
+  p_exclude uuid default null,
+  p_timing boolean default true
+)
+returns text
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  s public.booking_settings;
+  v_last date := case when p_service.kind = 'stay' then p_end - 1 else p_start end;
+  d date;
+begin
+  select * into s from public.booking_settings where id = 1;
+  if p_timing then
+    if private.local_ts(p_start, private.service_start_minute(p_service)) < now() + make_interval(hours => s.min_notice_hours) then
+      return 'too_soon';
+    end if;
+    if p_start > private.local_today() + s.max_days_ahead then return 'too_far'; end if;
+  end if;
+  for d in select p_start + i from generate_series(0, greatest(v_last - p_start, 0)) as g(i) loop
+    if private.day_closed(d) then return 'closed'; end if;
+    if p_service.daily_capacity is not null
+       and private.service_booked(p_service.id, d, p_exclude) >= p_service.daily_capacity then
+      return 'full';
+    end if;
+  end loop;
+  return null;
+end;
+$$;
+
+-- A walker with room in the window who isn't already busy at that exact time.
+create or replace function private.pick_walker_at(
+  p_date date,
+  p_window uuid,
+  p_client uuid,
+  p_minute int,
+  p_duration int,
+  p_exclude uuid default null
+)
+returns uuid
+language sql
+stable
+set search_path = ''
+as $$
+  select k.profile_id
+  from public.walkers k
+  cross join lateral (
+    select private.walker_capacity(k.profile_id, p_date, p_window)
+         - private.walker_booked(k.profile_id, p_date, p_window, p_exclude) as remaining
+  ) r
+  where k.active and r.remaining > 0
+    and not exists (
+      select 1 from public.bookings b
+      where b.walker_id = k.profile_id
+        and b.service_date = p_date
+        and b.status in ('requested', 'scheduled')
+        and b.arrival_time is not null
+        and b.id is distinct from p_exclude
+        and (extract(epoch from b.arrival_time) / 60)::int < p_minute + p_duration
+        and p_minute < (extract(epoch from b.arrival_time) / 60)::int + b.duration_minutes
+    )
+  order by
+    (select max(b.service_date) from public.bookings b
+     where p_client is not null and b.user_id = p_client and b.walker_id = k.profile_id
+       and b.status in ('scheduled', 'completed')) desc nulls last,
+    r.remaining desc,
+    k.position,
+    k.profile_id
+  limit 1;
+$$;
+
+-- Walker for a full day or stay: not off that day, client's usual walker first, then least busy.
+create or replace function private.pick_walker_range(p_start date, p_last date, p_client uuid, p_exclude uuid default null)
+returns uuid
+language sql
+stable
+set search_path = ''
+as $$
+  select k.profile_id
+  from public.walkers k
+  where k.active
+    and not exists (
+      select 1 from public.time_off t
+      where t.walker_id = k.profile_id and t.window_id is null
+        and t.start_date <= p_last and t.end_date >= p_start
+    )
+  order by
+    (select max(b.service_date) from public.bookings b
+     where p_client is not null and b.user_id = p_client and b.walker_id = k.profile_id
+       and b.status in ('scheduled', 'completed')) desc nulls last,
+    (select count(*) from public.bookings b
+     where b.walker_id = k.profile_id and b.kind in ('day', 'stay') and b.status in ('requested', 'scheduled')
+       and b.id is distinct from p_exclude and b.service_date <= p_last and b.end_date >= p_start),
+    k.position,
+    k.profile_id
+  limit 1;
+$$;
+
+-- Why a client can't book an appointment at p_minute (or null).
+create or replace function private.time_problem(
+  p_date date,
+  p_window public.booking_windows,
+  p_minute int,
+  p_duration int,
+  p_exclude uuid default null
+)
+returns text
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  s public.booking_settings;
+begin
+  select * into s from public.booking_settings where id = 1;
+  if p_window.id is null or not p_window.active then return 'closed'; end if;
+  if private.local_ts(p_date, p_minute) < now() + make_interval(hours => s.min_notice_hours) then return 'too_soon'; end if;
+  if p_date > private.local_today() + s.max_days_ahead then return 'too_far'; end if;
+  if private.pick_walker_at(p_date, p_window.id, null, p_minute, p_duration, p_exclude) is null then
+    return case when exists (
+      select 1 from public.walkers k
+      where k.active and private.walker_capacity(k.profile_id, p_date, p_window.id) > 0
+    ) then 'full' else 'closed' end;
+  end if;
+  return null;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Email (Resend via pg_net)
 -- ---------------------------------------------------------------------------
@@ -464,20 +710,56 @@ stable
 set search_path = ''
 as $$
   select
-    to_char(b.service_date::timestamp, 'FMDay, FMMonth FMDD'),
+    case when b.kind = 'stay' and b.end_date > b.service_date
+      then to_char(b.service_date::timestamp, 'Dy, Mon FMDD') || ' → ' || to_char(b.end_date::timestamp, 'Dy, Mon FMDD')
+      else to_char(b.service_date::timestamp, 'FMDay, FMMonth FMDD') end,
     to_char(b.service_date::timestamp, 'Dy, Mon FMDD'),
     case
+      when b.kind = 'stay' then
+        (b.end_date - b.service_date) || ' night' || case when b.end_date - b.service_date = 1 then '' else 's' end
+        || ' · check-in ' || private.minute_label(private.local_minute(b.start_time))
+        || ', check-out ' || private.minute_label(private.local_minute(b.end_time))
+      when b.kind = 'day' then
+        'All day · ' || private.minute_label(private.local_minute(b.start_time))
+        || ' – ' || private.minute_label(private.local_minute(b.end_time))
+      when b.kind = 'time' and b.arrival_time is not null then
+        'At ' || private.minute_label((extract(epoch from b.arrival_time) / 60)::int)
       when b.arrival_time is not null and w.id is not null then
         w.label || ' · around ' || private.minute_label((extract(epoch from b.arrival_time) / 60)::int)
       when b.arrival_time is not null then
         'Around ' || private.minute_label((extract(epoch from b.arrival_time) / 60)::int)
       when w.id is not null then
         w.label || ' · ' || private.minute_label(w.start_minute) || ' – ' || private.minute_label(w.end_minute)
-      else to_char(b.start_time at time zone private.booking_tz(), 'FMHH12:MI AM')
+      else private.minute_label(private.local_minute(b.start_time))
     end
   from public.bookings b
   left join public.booking_windows w on w.id = b.window_id
   where b.id = p_booking_id;
+$$;
+
+-- Per-booking intake answers as "Question: answer" lines, labelled from the intake form.
+create or replace function private.answers_text(p_answers jsonb)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select string_agg(
+    coalesce(f.label, a.key) || ': ' ||
+    case jsonb_typeof(a.value)
+      when 'array' then (select string_agg(x, ', ') from jsonb_array_elements_text(a.value) as x)
+      when 'boolean' then case when a.value = 'true'::jsonb then 'Yes' else 'No' end
+      else a.value #>> '{}'
+    end,
+    E'\n' order by f.ord nulls last, a.key)
+  from jsonb_each(coalesce(p_answers, '{}'::jsonb)) as a
+  left join lateral (
+    select e ->> 'label' as label, n as ord
+    from public.forms fm, jsonb_array_elements(fm.fields) with ordinality as t(e, n)
+    where fm.slug = 'intake' and e ->> 'id' = a.key
+    limit 1
+  ) f on true
+  where coalesce(a.value #>> '{}', '') <> '' and a.value <> '[]'::jsonb;
 $$;
 
 create or replace function private.pet_names(p_booking_id uuid)
@@ -509,7 +791,8 @@ begin
   for r in
     select b.id, b.title, b.status, b.client_note, b.notes, b.invitee_name,
            k.display_name as walker_name, p.full_name as client_name, p.address, p.phone,
-           private.pet_names(b.id) as pets, vw.day_label, vw.time_label
+           private.pet_names(b.id) as pets, vw.day_label, vw.time_label,
+           private.answers_text(b.answers) as answers
     from public.bookings b
     cross join lateral private.visit_when(b.id) vw
     left join public.walkers k on k.profile_id = b.walker_id
@@ -536,6 +819,9 @@ begin
       || case when v_line3 is not null then '<div style="margin-top:2px;font-size:14px;color:#3D5566">' || private.html(v_line3) || '</div>' else '' end
       || case when p_for = 'admin' and coalesce(r.client_note, '') <> '' then
            '<div style="margin-top:6px;font-size:14px;color:#0F2B3F"><b>Note:</b> ' || private.html(r.client_note) || '</div>'
+         else '' end
+      || case when p_for = 'admin' and coalesce(r.answers, '') <> '' then
+           '<div style="margin-top:6px;font-size:13px;line-height:1.5;color:#0F2B3F;white-space:pre-line">' || private.html(r.answers) || '</div>'
          else '' end
       || '</div>';
   end loop;
@@ -649,12 +935,14 @@ begin
     loop
       continue when c.email is null or c.email !~ '@';
       v_n := cardinality(c.ids);
-      select b.title, private.pet_names(b.id) as pets, vw.short_day
+      select b.title, b.kind, private.pet_names(b.id) as pets, vw.short_day
       into v_first
       from public.bookings b cross join lateral private.visit_when(b.id) vw
       where b.id = c.ids[1];
-      v_what := case when v_n = 1 then v_first.title || ' on ' || v_first.short_day
-                     else v_n || ' visits starting ' || v_first.short_day end;
+      v_what := case
+        when v_n = 1 and v_first.kind = 'stay' then v_first.title || ' from ' || v_first.short_day
+        when v_n = 1 then v_first.title || ' on ' || v_first.short_day
+        else v_n || ' visits starting ' || v_first.short_day end;
 
       case p_event
         when 'booked' then
@@ -816,6 +1104,85 @@ begin
 end;
 $$;
 
+-- Full-day and overnight services: open spots per day (nights for stays).
+create or replace function public.service_availability(p_service_id uuid, p_from date, p_to date)
+returns table (service_date date, capacity int, remaining int)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  s public.booking_settings;
+  v_admin boolean := private.is_admin();
+  v_service public.services;
+  v_from date;
+  v_to date;
+begin
+  if (select auth.uid()) is null then raise exception 'Please log in to book.'; end if;
+  select * into s from public.booking_settings where id = 1;
+  select * into v_service from public.services where id = p_service_id;
+  if not found or v_service.kind not in ('day', 'stay') then return; end if;
+  if not v_admin and (not s.booking_enabled or not v_service.active or not v_service.bookable) then return; end if;
+
+  v_from := case when v_admin then p_from else greatest(p_from, private.local_today()) end;
+  v_to := least(p_to, v_from + 180,
+    case when v_admin then p_to else private.local_today() + s.max_days_ahead + v_service.max_nights end);
+  if v_from is null or v_to is null or v_to < v_from then return; end if;
+
+  return query
+    select d.day,
+           coalesce(v_service.daily_capacity, 99)::int,
+           greatest(coalesce(v_service.daily_capacity, 99) - private.service_booked(v_service.id, d.day), 0)::int
+    from (select v_from + i as day from generate_series(0, v_to - v_from) as g(i)) d
+    where not private.day_closed(d.day)
+      and (v_admin or private.local_ts(d.day, private.service_start_minute(v_service))
+                      >= now() + make_interval(hours => s.min_notice_hours))
+    order by d.day;
+end;
+$$;
+
+-- Set-time services: the start times still open on a day.
+create or replace function public.time_slots(p_service_id uuid, p_date date)
+returns table (minute int, window_id uuid)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  s public.booking_settings;
+  v_admin boolean := private.is_admin();
+  v_service public.services;
+  v_duration int;
+  w record;
+  m int;
+begin
+  if (select auth.uid()) is null then raise exception 'Please log in to book.'; end if;
+  select * into s from public.booking_settings where id = 1;
+  select * into v_service from public.services where id = p_service_id;
+  if not found or v_service.kind <> 'time' or p_date is null then return; end if;
+  if not v_admin and (not s.booking_enabled or not v_service.active or not v_service.bookable
+                      or p_date > private.local_today() + s.max_days_ahead) then
+    return;
+  end if;
+  v_duration := coalesce(v_service.duration_minutes, 30);
+
+  for w in select * from public.booking_windows where active order by start_minute loop
+    m := w.start_minute;
+    while m + v_duration <= w.end_minute loop
+      if (v_admin or private.local_ts(p_date, m) >= now() + make_interval(hours => s.min_notice_hours))
+         and private.pick_walker_at(p_date, w.id, null, m, v_duration) is not null then
+        minute := m;
+        window_id := w.id;
+        return next;
+      end if;
+      m := m + 30;
+    end loop;
+  end loop;
+end;
+$$;
+
 -- Books one or more visits (several dates = a weekly series).
 -- Clients book for themselves; admins can book for anyone (or a guest), pick the walker, pin an
 -- exact arrival time and go over capacity with p_force.
@@ -832,7 +1199,9 @@ create or replace function public.book_visits(
   p_force boolean default false,
   p_notify boolean default true,
   p_guest_name text default null,
-  p_guest_email text default null
+  p_guest_email text default null,
+  p_end_date date default null,
+  p_answers jsonb default null
 )
 returns jsonb
 language plpgsql
@@ -845,11 +1214,13 @@ declare
   v_admin boolean := private.is_admin();
   s public.booking_settings;
   v_service public.services;
+  v_kind text;
   v_window public.booking_windows;
   v_client uuid;
   v_pets uuid[];
   v_dates date[];
   v_date date;
+  v_last date;
   v_series uuid;
   v_status text;
   v_reason text;
@@ -863,6 +1234,10 @@ declare
   v_skipped jsonb := '[]'::jsonb;
   v_ids uuid[] := '{}';
   v_note text := nullif(left(trim(coalesce(p_note, '')), 1000), '');
+  v_answers jsonb := case
+    when jsonb_typeof(p_answers) = 'object' and length(p_answers::text) <= 20000 then
+      (select coalesce(jsonb_object_agg(a.key, a.value), '{}'::jsonb) from jsonb_each(p_answers) a where a.key !~ '^__')
+    else '{}'::jsonb end;
 begin
   if v_uid is null then raise exception 'Please log in to book.'; end if;
   select * into s from public.booking_settings where id = 1;
@@ -871,7 +1246,7 @@ begin
     v_client := p_client_id;
   else
     if p_client_id is not null and p_client_id <> v_uid then raise exception 'You can only book for yourself.'; end if;
-    if p_walker_id is not null or p_arrival_minute is not null or p_force or p_guest_name is not null then
+    if p_walker_id is not null or p_force or p_guest_name is not null then
       raise exception 'Only the Waiting for Paws team can do that.';
     end if;
     if not s.booking_enabled then
@@ -889,22 +1264,29 @@ begin
      and not coalesce((select booking_approved from public.profiles where id = v_client), false) then
     raise exception 'Book a meet & greet first — regular visits unlock once we’ve met your pup.';
   end if;
+  v_kind := v_service.kind;
   v_duration := coalesce(v_service.duration_minutes, 30);
+  if not v_admin and p_arrival_minute is not null and v_kind <> 'time' then
+    raise exception 'Only the Waiting for Paws team can do that.';
+  end if;
 
   -- When
   if p_arrival_minute is not null and (p_arrival_minute < 0 or p_arrival_minute > 1439) then
     raise exception 'Pick a valid time.';
   end if;
-  if p_window_id is null and p_arrival_minute is not null then
-    p_window_id := private.window_containing(p_arrival_minute);
+  if v_kind in ('window', 'time') then
+    if v_kind = 'time' and p_arrival_minute is null then raise exception 'Pick a time.'; end if;
+    if p_window_id is null and p_arrival_minute is not null then
+      p_window_id := private.window_containing(p_arrival_minute);
+    end if;
+    if p_window_id is not null then
+      select * into v_window from public.booking_windows where id = p_window_id;
+      if not found or (not v_admin and not v_window.active) then raise exception 'Pick a time of day.'; end if;
+    elsif not v_admin or p_arrival_minute is null then
+      raise exception 'Pick a time of day.';
+    end if;
+    v_arrival := case when p_arrival_minute is not null then time '00:00' + make_interval(mins => p_arrival_minute) end;
   end if;
-  if p_window_id is not null then
-    select * into v_window from public.booking_windows where id = p_window_id;
-    if not found or (not v_admin and not v_window.active) then raise exception 'Pick a time of day.'; end if;
-  elsif not v_admin or p_arrival_minute is null then
-    raise exception 'Pick a time of day.';
-  end if;
-  v_arrival := case when p_arrival_minute is not null then time '00:00' + make_interval(mins => p_arrival_minute) end;
 
   -- Who
   if v_client is not null and not exists (select 1 from public.profiles where id = v_client) then
@@ -929,6 +1311,13 @@ begin
   v_dates := array(select distinct d from unnest(coalesce(p_dates, '{}'::date[])) as t(d) where d is not null order by d);
   if cardinality(v_dates) = 0 then raise exception 'Pick at least one date.'; end if;
   if cardinality(v_dates) > 100 then raise exception 'You can book up to 100 visits at a time.'; end if;
+  if v_kind = 'stay' then
+    if cardinality(v_dates) <> 1 then raise exception 'Pick a check-in date.'; end if;
+    if p_end_date is null or p_end_date <= v_dates[1] then raise exception 'Pick a check-out date after check-in.'; end if;
+    if not v_admin and (p_end_date - v_dates[1] < v_service.min_nights or p_end_date - v_dates[1] > v_service.max_nights) then
+      raise exception 'Stays for this service are % to % nights.', v_service.min_nights, v_service.max_nights;
+    end if;
+  end if;
 
   v_status := case when v_service.confirmation = 'request' and not v_admin then 'requested' else 'scheduled' end;
   v_series := case when cardinality(v_dates) > 1 then gen_random_uuid() end;
@@ -939,8 +1328,12 @@ begin
   foreach v_date in array v_dates loop
     v_reason := null;
     v_walker := null;
+    v_last := case when v_kind = 'stay' then p_end_date else v_date end;
 
-    if v_window.id is not null then
+    if v_kind in ('day', 'stay') then
+      v_start := private.local_ts(v_date, private.service_start_minute(v_service));
+      v_end := private.local_ts(v_last, private.service_end_minute(v_service));
+    elsif v_kind = 'window' and v_window.id is not null then
       v_start := private.local_ts(v_date, v_window.start_minute);
       v_end := private.local_ts(v_date, v_window.end_minute);
     else
@@ -948,35 +1341,55 @@ begin
       v_end := v_start + make_interval(mins => v_duration);
     end if;
 
-    if not v_admin then
-      v_reason := private.slot_problem(v_date, v_window);
+    -- Can it be booked?
+    if v_kind in ('day', 'stay') then
+      if not (v_admin and p_force) then
+        v_reason := private.range_problem(v_service, v_date, v_last, null, not v_admin);
+      end if;
+    elsif not v_admin then
+      v_reason := case when v_kind = 'time'
+        then private.time_problem(v_date, v_window, p_arrival_minute, v_duration)
+        else private.slot_problem(v_date, v_window) end;
     end if;
 
+    -- The same pup can't be booked twice for the same time.
     if v_reason is null and cardinality(v_pets) > 0 and exists (
       select 1 from public.bookings b
       join public.booking_pets bp on bp.booking_id = b.id
       where bp.pet_id = any (v_pets)
-        and b.service_date = v_date
         and b.status in ('requested', 'scheduled')
-        and (b.window_id = v_window.id or (v_window.id is null and b.start_time = v_start))
+        and case
+          when v_kind in ('day', 'stay') then
+            b.kind = v_kind
+            and b.service_date < case when v_kind = 'stay' then v_last else v_last + 1 end
+            and v_date < case when b.kind = 'stay' then b.end_date else b.end_date + 1 end
+          else
+            b.service_date = v_date and b.kind in ('window', 'time')
+            and b.start_time < v_end and v_start < b.end_time
+        end
     ) then
       v_reason := 'already_booked';
     end if;
 
+    -- Who walks it?
     if v_reason is null then
       if v_admin and p_walker_id is not null then
         if not exists (select 1 from public.walkers where profile_id = p_walker_id) then
           raise exception 'Walker not found.';
         end if;
-        if not p_force and v_window.id is not null
+        if not p_force and v_kind in ('window', 'time') and v_window.id is not null
            and private.walker_capacity(p_walker_id, v_date, v_window.id)
                - private.walker_booked(p_walker_id, v_date, v_window.id) <= 0 then
           v_reason := 'walker_full';
         else
           v_walker := p_walker_id;
         end if;
+      elsif v_kind in ('day', 'stay') then
+        v_walker := private.pick_walker_range(v_date, v_last, v_client);
       elsif v_window.id is not null then
-        v_walker := private.pick_walker(v_date, v_window.id, v_client);
+        v_walker := case when v_kind = 'time'
+          then private.pick_walker_at(v_date, v_window.id, v_client, p_arrival_minute, v_duration)
+          else private.pick_walker(v_date, v_window.id, v_client) end;
         if v_walker is null and not (v_admin and p_force) then
           v_reason := coalesce(case when v_admin then private.slot_problem(v_date, v_window) end, 'full');
           if v_reason in ('too_soon', 'too_far') then v_reason := 'full'; end if;
@@ -990,15 +1403,19 @@ begin
     end if;
 
     insert into public.bookings (
-      user_id, service_id, title, start_time, end_time, status, source, walker_id, window_id,
-      service_date, arrival_time, duration_minutes, series_id, client_note, notes,
+      user_id, service_id, title, kind, start_time, end_time, status, source, walker_id, window_id,
+      service_date, end_date, arrival_time, duration_minutes, series_id, client_note, notes, answers,
       invitee_name, invitee_email, created_by
     ) values (
-      v_client, v_service.id, v_service.name, v_start, v_end, v_status,
+      v_client, v_service.id, v_service.name, v_kind, v_start, v_end, v_status,
       case when v_admin then 'manual' else 'portal' end,
-      v_walker, v_window.id, v_date, v_arrival, v_duration, v_series,
+      v_walker, v_window.id, v_date, v_last,
+      case when v_kind in ('window', 'time') then v_arrival end,
+      case when v_kind in ('day', 'stay') then greatest(5, least(1440, (extract(epoch from v_end - v_start) / 60)::int)) else v_duration end,
+      v_series,
       case when v_admin then null else v_note end,
       case when v_admin then v_note end,
+      v_answers,
       case when v_client is null then left(trim(p_guest_name), 120) end,
       case when v_client is null then nullif(left(trim(coalesce(p_guest_email, '')), 200), '') end,
       v_uid
@@ -1008,15 +1425,15 @@ begin
     insert into public.booking_pets (booking_id, pet_id) select v_id, unnest(v_pets);
 
     v_ids := v_ids || v_id;
-    v_created := v_created || jsonb_build_object('id', v_id, 'date', v_date, 'walker_id', v_walker);
+    v_created := v_created || jsonb_build_object('id', v_id, 'date', v_date, 'end_date', v_last, 'walker_id', v_walker);
   end loop;
 
   if cardinality(v_ids) = 0 then
     raise exception '%', case (v_skipped -> 0 ->> 'reason')
       when 'too_soon' then 'That time is too soon to book online — please message us.'
       when 'too_far' then 'That’s further out than we book. Pick an earlier date.'
-      when 'closed' then 'We’re not taking visits at that time.'
-      when 'already_booked' then 'Your pup already has a visit at that time.'
+      when 'closed' then 'We’re not taking bookings then.'
+      when 'already_booked' then 'Your pup already has a booking then.'
       when 'walker_full' then 'That walker is fully booked then. Choose another walker or allow overbooking.'
       else 'Sorry — that time just filled up. Please pick another.'
     end;
@@ -1155,7 +1572,8 @@ create or replace function public.move_booking(
   p_arrival_minute int default null,
   p_walker_id uuid default null,
   p_notify boolean default null,
-  p_clear_arrival boolean default false
+  p_clear_arrival boolean default false,
+  p_end_date date default null
 )
 returns jsonb
 language plpgsql
@@ -1168,10 +1586,12 @@ declare
   v_admin boolean := private.is_admin();
   s public.booking_settings;
   b public.bookings;
+  v_service public.services;
   v_window public.booking_windows;
   v_window_id uuid;
   v_arrival time;
   v_walker uuid;
+  v_last date;
   v_start timestamptz;
   v_end timestamptz;
   v_problem text;
@@ -1185,18 +1605,72 @@ begin
 
   select * into b from public.bookings where id = p_booking_id for update;
   if not found or (not v_admin and b.user_id is distinct from v_uid) then raise exception 'Visit not found.'; end if;
+  select * into v_service from public.services where id = b.service_id;
 
   if not v_admin then
     if b.status not in ('requested', 'scheduled') then raise exception 'This visit can’t be changed anymore.'; end if;
-    if p_arrival_minute is not null or p_walker_id is not null then
+    if p_walker_id is not null or (p_arrival_minute is not null and b.kind <> 'time') then
       raise exception 'Only the Waiting for Paws team can do that.';
     end if;
     if b.start_time < now() + make_interval(hours => s.cancel_cutoff_hours) then
       raise exception 'This visit is less than % hours away — please message us to change it.', s.cancel_cutoff_hours;
     end if;
-    select * into v_window from public.booking_windows where id = p_window_id;
-    if not found then raise exception 'Pick a time of day.'; end if;
-    v_problem := private.slot_problem(p_date, v_window, b.id);
+  end if;
+
+  if b.kind in ('day', 'stay') then
+    -- Keep the length (or take the new check-out) and the drop-off / pick-up times.
+    v_last := case
+      when b.kind = 'stay' then coalesce(p_end_date, p_date + (b.end_date - b.service_date))
+      else p_date end;
+    if b.kind = 'stay' and v_last <= p_date then raise exception 'Check-out has to be after check-in.'; end if;
+    if not v_admin then
+      if b.kind = 'stay' and v_service.id is not null
+         and (v_last - p_date < v_service.min_nights or v_last - p_date > v_service.max_nights) then
+        raise exception 'Stays for this service are % to % nights.', v_service.min_nights, v_service.max_nights;
+      end if;
+      if v_service.id is not null then
+        v_problem := private.range_problem(v_service, p_date, v_last, b.id, true);
+      end if;
+      if v_problem is not null then
+        raise exception '%', case v_problem
+          when 'too_soon' then 'That’s too soon to book online.'
+          when 'too_far' then 'That’s further out than we book.'
+          when 'closed' then 'We’re not taking bookings on one of those days.'
+          else 'Sorry — one of those days is full. Please pick other dates.' end;
+      end if;
+      if exists (
+        select 1 from public.bookings x
+        join public.booking_pets bp on bp.booking_id = x.id
+        where bp.pet_id in (select pet_id from public.booking_pets where booking_id = b.id)
+          and x.id <> b.id and x.kind = b.kind and x.status in ('requested', 'scheduled')
+          and x.service_date < case when b.kind = 'stay' then v_last else v_last + 1 end
+          and p_date < case when x.kind = 'stay' then x.end_date else x.end_date + 1 end
+      ) then
+        raise exception 'Your pup already has a booking then.';
+      end if;
+    end if;
+    v_window_id := null;
+    v_arrival := null;
+    v_start := private.local_ts(p_date, private.local_minute(b.start_time));
+    v_end := private.local_ts(v_last, private.local_minute(b.end_time));
+    v_walker := coalesce(p_walker_id,
+      case when b.walker_id is not null and not exists (
+          select 1 from public.time_off t
+          where t.walker_id = b.walker_id and t.window_id is null and t.start_date <= v_last and t.end_date >= p_date
+        ) then b.walker_id end,
+      case when v_admin then b.walker_id end,
+      private.pick_walker_range(p_date, v_last, b.user_id, b.id));
+  elsif not v_admin then
+    v_last := p_date;
+    if b.kind = 'time' then
+      if p_arrival_minute is null then raise exception 'Pick a time.'; end if;
+      select * into v_window from public.booking_windows where id = private.window_containing(p_arrival_minute);
+      v_problem := private.time_problem(p_date, v_window, p_arrival_minute, b.duration_minutes, b.id);
+    else
+      select * into v_window from public.booking_windows where id = p_window_id;
+      if not found then raise exception 'Pick a time of day.'; end if;
+      v_problem := private.slot_problem(p_date, v_window, b.id);
+    end if;
     if v_problem is not null then
       raise exception '%', case v_problem
         when 'too_soon' then 'That time is too soon to book online.'
@@ -1208,22 +1682,28 @@ begin
       select 1 from public.bookings x
       join public.booking_pets bp on bp.booking_id = x.id
       where bp.pet_id in (select pet_id from public.booking_pets where booking_id = b.id)
-        and x.id <> b.id and x.service_date = p_date and x.window_id = v_window.id
+        and x.id <> b.id and x.service_date = p_date and x.window_id = v_window.id and x.kind = b.kind
         and x.status in ('requested', 'scheduled')
     ) then
       raise exception 'Your pup already has a visit at that time.';
     end if;
-    v_walker := case
-      when b.walker_id is not null
-           and private.walker_capacity(b.walker_id, p_date, v_window.id)
-               - private.walker_booked(b.walker_id, p_date, v_window.id, b.id) > 0
-        then b.walker_id
-      else private.pick_walker(p_date, v_window.id, b.user_id, b.id)
-    end;
+    if b.kind = 'time' then
+      v_walker := private.pick_walker_at(p_date, v_window.id, b.user_id, p_arrival_minute, b.duration_minutes, b.id);
+      v_arrival := time '00:00' + make_interval(mins => p_arrival_minute);
+    else
+      v_walker := case
+        when b.walker_id is not null
+             and private.walker_capacity(b.walker_id, p_date, v_window.id)
+                 - private.walker_booked(b.walker_id, p_date, v_window.id, b.id) > 0
+          then b.walker_id
+        else private.pick_walker(p_date, v_window.id, b.user_id, b.id)
+      end;
+      v_arrival := null;
+    end if;
     if v_walker is null then raise exception 'Sorry — that time is full. Please pick another.'; end if;
     v_window_id := v_window.id;
-    v_arrival := null;
   else
+    v_last := p_date;
     if p_arrival_minute is not null and (p_arrival_minute < 0 or p_arrival_minute > 1439) then
       raise exception 'Pick a valid time.';
     end if;
@@ -1248,19 +1728,23 @@ begin
     end if;
   end if;
 
-  if v_window.id is not null then
-    v_start := private.local_ts(p_date, v_window.start_minute);
-    v_end := private.local_ts(p_date, v_window.end_minute);
-  else
-    v_start := private.local_ts(p_date, (extract(epoch from v_arrival) / 60)::int);
-    v_end := v_start + make_interval(mins => b.duration_minutes);
+  if b.kind in ('window', 'time') then
+    if b.kind = 'window' and v_window.id is not null then
+      v_start := private.local_ts(p_date, v_window.start_minute);
+      v_end := private.local_ts(p_date, v_window.end_minute);
+    else
+      v_start := private.local_ts(p_date, coalesce((extract(epoch from v_arrival) / 60)::int, v_window.start_minute));
+      v_end := v_start + make_interval(mins => b.duration_minutes);
+    end if;
   end if;
 
-  v_changed := p_date is distinct from b.service_date or v_window_id is distinct from b.window_id
-    or (v_window_id is null and v_arrival is distinct from b.arrival_time);
+  v_changed := p_date is distinct from b.service_date or v_last is distinct from b.end_date
+    or v_window_id is distinct from b.window_id
+    or ((v_window_id is null or b.kind = 'time') and v_arrival is distinct from b.arrival_time);
 
   update public.bookings
   set service_date = p_date,
+      end_date = v_last,
       window_id = v_window_id,
       arrival_time = v_arrival,
       start_time = v_start,
@@ -1325,7 +1809,9 @@ begin
         'id', b.id,
         'status', b.status,
         'title', b.title,
+        'kind', b.kind,
         'service_date', b.service_date,
+        'end_date', b.end_date,
         'start_time', b.start_time,
         'end_time', b.end_time,
         -- Pinned visits use the exact arrival; window visits span the window.
@@ -1628,7 +2114,8 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.proname in ('booking_availability', 'book_visits', 'cancel_booking', 'set_booking_status',
-                        'move_booking', 'reset_calendar_feed', 'calendar_feed', 'email_status', 'send_test_email')
+                        'move_booking', 'reset_calendar_feed', 'calendar_feed', 'email_status', 'send_test_email',
+                        'service_availability', 'time_slots')
   loop
     execute format('revoke execute on function %s from public, anon', f.sig);
     execute format('grant execute on function %s to authenticated, service_role', f.sig);
