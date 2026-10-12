@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+/*
+ * Brand colors. Defaults live here; the admin can override them from
+ * Admin → Settings → Colors (injected as a <style> tag by app/layout.tsx).
+ * Every shade below is derived from these six values.
+ */
+:root {
+  --brand-sea: #8ecdf0;
+  --brand-ocean: #1a6fa0;
+  --brand-ink: #0f2b3f;
+  --brand-sun: #ffc845;
+  --brand-sand: #fff7ea;
+  --brand-coral: #ff8a65;
+}
+
+@theme inline {
+  --color-sea: var(--brand-sea);
+  --color-sea-50: color-mix(in oklab, var(--brand-sea) 12%, white);
+  --color-sea-100: color-mix(in oklab, var(--brand-sea) 25%, white);
+  --color-sea-200: color-mix(in oklab, var(--brand-sea) 50%, white);
+  --color-sea-300: color-mix(in oklab, var(--brand-sea) 75%, white);
+
+  --color-ocean: var(--brand-ocean);
+  --color-ocean-700: color-mix(in oklab, var(--brand-ocean) 82%, black);
+
+  --color-ink: var(--brand-ink);
+  --color-ink-600: color-mix(in oklab, var(--brand-ink) 72%, white);
+  --color-ink-400: color-mix(in oklab, var(--brand-ink) 45%, white);
+  --color-ink-200: color-mix(in oklab, var(--brand-ink) 18%, white);
+  --color-ink-100: color-mix(in oklab, var(--brand-ink) 9%, white);
+
+  --color-sun: var(--brand-sun);
+  --color-sun-100: color-mix(in oklab, var(--brand-sun) 25%, white);
+  --color-sun-300: color-mix(in oklab, var(--brand-sun) 60%, white);
+  --color-sun-600: color-mix(in oklab, var(--brand-sun) 88%, black);
+
+  --color-sand: var(--brand-sand);
+  --color-sand-300: color-mix(in oklab, var(--brand-sand) 88%, var(--brand-ink));
+
+  --color-coral: var(--brand-coral);
+  --color-coral-100: color-mix(in oklab, var(--brand-coral) 20%, white);
+
+  --font-display: var(--font-fredoka), ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: white;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: var(--color-sun-300);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-ocean);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility container-page {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  @media (width >= 40rem) {
+    padding-inline: 1.5rem;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@utility animate-float {
+  animation: float 6s ease-in-out infinite;
+}

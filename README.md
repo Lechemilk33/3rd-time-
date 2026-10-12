@@ -1,118 +1,148 @@
-# Landloom
+# Waiting for Paws 🐾
 
-**Weave a world from a phrase.**
+Website, client portal and admin portal for **Waiting for Paws**, a dog walking business in
+Ocean Beach, San Diego ([@waitingforpaws](https://www.instagram.com/waitingforpaws/)).
 
-Landloom is a command-line world generator for game masters, writers, and
-anyone who needs a fantasy region that holds together. You give it a seed
-phrase; it gives you back a print-ready PDF atlas — a full-page antique-style
-map, followed by a typeset gazetteer of every city, river, forest, and rumor
-on it. The same phrase always weaves the same world, on any machine, so a
-phrase *is* a world: share it in a campaign notes doc, a forum post, or a
-book dedication, and anyone can pull up your exact map.
+- **Public website**: pages are built from sections the owner can add, reorder, hide and edit.
+- **Client portal** (`/portal`): clients sign up, add their pups (with photos), fill out the intake
+  form, book through Calendly and pay with Stripe.
+- **Admin portal** (`/admin`): edit every page, photo, price, color and intake question without
+  code, and manage clients, bookings, messages and payments.
 
-![The Salt Reaches — a generated atlas map](docs/salt-reaches-map.png)
+Built with Next.js 16 (App Router, Cache Components), Tailwind CSS 4, Supabase (Postgres, Auth,
+Storage), Stripe Checkout and Calendly.
 
-Everything on that page was decided by simulation, not decoration. Rivers
-run downhill because rainfall was routed over eroded terrain. The desert
-sits behind the mountains because the prevailing wind dropped its moisture
-climbing them. The biggest city is a port at a river mouth because that is
-where trade would actually pool. And every name has an etymology the
-gazetteer can quote, in a language invented for that world alone.
+## Brand colors
 
-## Install
+Dogs are dichromats: they see blues and yellows well, while reds and greens look muddy to them.
+The palette leans into that, and into Ocean Beach itself.
 
-With [uv](https://docs.astral.sh/uv/) (or `pipx`, same shape):
+| Token   | Default   | Used for                                           |
+| ------- | --------- | -------------------------------------------------- |
+| `sea`   | `#8ECDF0` | Light blue: backgrounds, highlights (main color)   |
+| `ocean` | `#1A6FA0` | Links and secondary buttons (AA contrast on white) |
+| `ink`   | `#0F2B3F` | Headings, body text, footer                        |
+| `sun`   | `#FFC845` | Tennis-ball yellow: main call-to-action buttons    |
+| `sand`  | `#FFF7EA` | Warm section backgrounds                           |
+| `coral` | `#FF8A65` | Small sunset accents                               |
 
-```
-uv tool install "git+https://github.com/Lechemilk33/3rd-time-.git@claude/overnight-build-bpevb2"
-```
+The admin can change all six in **Admin → Settings & colors**. Every lighter or darker shade is
+derived from them with `color-mix()` in `app/globals.css`.
 
-or with plain pip:
+## Getting started
 
-```
-pip install "git+https://github.com/Lechemilk33/3rd-time-.git@claude/overnight-build-bpevb2"
-```
-
-Python 3.10+ and nothing else — Landloom has **zero dependencies**, right
-down to writing its PDFs byte by byte.
-
-## Use
-
-```
-landloom "The Salt Reaches"
+```bash
+npm install
+cp .env.example .env.local   # fill in the Supabase values
+npm run dev
 ```
 
-That writes `the-salt-reaches.pdf`: the map sheet plus a gazetteer. Other
-things it can do:
+The site runs without any environment variables and shows the built-in starter content, so you
+can preview the design before connecting anything. Logins need Supabase.
+
+### 1. Supabase
+
+1. Create a project at [supabase.com](https://supabase.com) (the free plan is fine).
+2. Run the SQL files in `supabase/migrations/` in order, using the SQL editor or `supabase db push`.
+   They create the tables, row-level security policies and the public `media` storage bucket.
+3. Under **Authentication → URL Configuration**, set the **Site URL** to your live domain and
+   add `https://YOUR-DOMAIN/auth/callback` (plus `http://localhost:3000/auth/callback` for local
+   development) to **Redirect URLs**.
+4. Email: Supabase's built-in email sender only delivers to your own team's addresses and is heavily
+   rate limited. Before clients sign up, either connect a real SMTP provider (Resend, Postmark, …)
+   under **Authentication → Emails → SMTP**, or turn off **Confirm email** so new accounts log in
+   right away.
+5. Copy the project URL, publishable key and secret key into your environment variables.
+
+### 2. Become the admin
+
+Set `ADMIN_EMAILS` to the owner's email (comma-separate several) together with
+`SUPABASE_SECRET_KEY`, sign up on the site, and you're promoted the first time you log in.
+Alternatively, after signing up, run this in the Supabase SQL editor:
+
+```sql
+update public.profiles set role = 'admin' where email = 'you@example.com';
+```
+
+Then open `/admin` and click **Load starter content**. That copies the starter pages, services and
+intake form into the database, and from then on everything is editable.
+
+### 3. Deploy on Vercel
+
+Import the repo into Vercel and add the environment variables from `.env.example`. No other
+configuration is needed.
+
+### 4. Calendly (booking)
+
+- Paste your Calendly link in **Admin → Settings → Booking**. The scheduler is embedded on the
+  `/book` page and in the client portal, pre-filled with the client's name and email. Each service
+  can also have its own Calendly event link.
+- Optional: to sync bookings into the portals, create a Calendly webhook subscription (paid
+  Calendly plans) for `invitee.created` and `invitee.canceled` pointing at
+  `https://YOUR-DOMAIN/api/webhooks/calendly`, and set `CALENDLY_WEBHOOK_SIGNING_KEY`.
+
+### 5. Stripe (payments)
+
+1. Set `STRIPE_SECRET_KEY` (start with a `sk_test_` key).
+2. Add a webhook endpoint for `checkout.session.completed` at
+   `https://YOUR-DOMAIN/api/webhooks/stripe` and set `STRIPE_WEBHOOK_SECRET`.
+3. Turn on **Clients can pay online** for a service in **Admin → Services**.
+
+Clients then see a **Pay** button in **Portal → Payments**. Checkout is hosted by Stripe and the
+amount always comes from the service's price in the database.
+
+**Admin → Integrations** shows the status of each connection and the webhook URLs to copy.
+
+## How the no-code editing works
+
+| What                       | Where it lives                                            |
+| -------------------------- | --------------------------------------------------------- |
+| Business info, colors, SEO | `site_settings` (one JSON row)                            |
+| Pages                      | `pages`, served at `/<slug>` (home is `/`)                |
+| Page content               | `sections`: ordered blocks with a `type` and JSON `data`  |
+| Services & prices          | `services`                                                |
+| Gallery                    | `gallery_photos` + Supabase Storage (`media/gallery/…`)   |
+| Intake form questions      | `forms` (JSON field list); answers in `form_submissions`  |
+
+Public pages are cached with `"use cache"` and tagged `site-content`. Every admin save calls
+`updateTag("site-content")`, so changes show up on the live site immediately. Photos are resized
+to WebP in the browser before they're uploaded.
+
+### Adding a new section type
+
+1. Describe its fields in `lib/sections.ts`. The admin editor builds its form from that list.
+2. Add a renderer in `components/sections/` and register it in `components/sections/index.tsx`.
+
+## Project layout
 
 ```
-landloom "emberfall" --paper poster        # 22x17" sheet for real printing
-landloom "gloamwake" --shape isles         # force a landform: continent,
-                                           #   coast, isles, or highlands
-landloom "winterdeep" --hex 6              # hexcrawl overlay, 6 mi/hex
-landloom "quiet harbor" --preview          # ANSI map in your terminal
-landloom "salt march" --json world.json    # the raw data, for your own tools
-landloom                                   # no phrase: weaves a random one
-landloom --help                            # everything else
+app/
+  (site)/            public website: home + /[slug] pages built from sections
+  (auth)/            login, signup, forgot password
+  portal/            client portal
+  admin/             admin portal (+ _actions/ server actions)
+  api/webhooks/      Stripe and Calendly webhooks
+  auth/              email link callback, sign out
+components/
+  sections/          public renderers, one per section type
+  admin/             page builder, schema-driven forms, gallery, form builder
+  portal/            client portal forms
+lib/
+  content.ts         cached reads of public content (with starter-content fallback)
+  defaults.ts        starter copy, services and intake form
+  sections.ts        section types and their editable fields
+  auth.ts            current user / requireUser / requireAdmin
+supabase/migrations/ database schema, RLS and storage policies
+proxy.ts             refreshes Supabase sessions and guards /portal and /admin
 ```
 
-Generation takes a few seconds. A phrase is normalized before use
-(`"Emberfall "` and `"emberfall"` are the same world), and anything is a
-valid phrase — names, sentences, dates, in-jokes.
+## Security notes
 
-## What the atlas contains
-
-- **The map sheet** — shaded relief, coastlines with waterlines, rivers that
-  widen as tributaries join them, lakes, biome washes from glacier to
-  rainforest, mountain/forest/marsh glyphs, province borders and tints,
-  roads with bridges, sea lanes between ports, settlement symbols ranked
-  city/town/village, a compass, a scale bar in miles, and a title cartouche.
-- **The gazetteer** — every settlement with population, trade goods, its
-  province, and a rumor a game master can run with; every named river with
-  its source and measured length; the wild country (ranges, forests, fens,
-  wastes); and notes on the world's own language, so you can coin new names
-  that fit.
-- **Etymologies throughout** — names are compounds of generated roots
-  (`Aldmere — "old + lake"`), and the same root recurs across the map
-  wherever the land repeats itself.
-
-## How it thinks
-
-Landloom is a pipeline of small simulations, each feeding the next:
-fractal terrain is carved by stream-power erosion; rainfall is blown
-across the result by a prevailing wind, losing moisture over high ground;
-rivers are traced from the drainage; settlements are scored on water,
-flatness, climate, and trade access; roads are routed over the terrain
-with a real pathfinder; provinces grow outward from their seats by travel
-cost; a phonology is generated and a lexicon derived from it; and finally
-the labels on the map are placed by simulated annealing, the way
-cartographers' software does it. Nothing is drawn by hand and nothing is
-looked up from a stock list — which is why the geography, the economy, and
-the names all agree with each other.
-
-## Honest limits
-
-- Landloom makes **regions**, not planets, dungeons, or battle maps. One
-  phrase, one region, a few hundred miles across.
-- The prose is assembled from templates over real world data. It is
-  varied and grounded, but it is not a novelist; read it as a starting
-  point, not a finished setting bible.
-- The invented languages are naming languages — sound systems and word
-  roots — not full grammars you could speak.
-- Cultural texture beyond names (religions, politics, history) is
-  shallow: factions and rumors, not chronicles.
-- There is no editor. If you want to move a city, the tool is not for
-  that; weave another phrase instead — they are free.
-
-## Examples
-
-Pre-woven atlases live in [`examples/`](examples/):
-[The Salt Reaches](examples/the-salt-reaches.pdf) (a continent),
-[winterdeep](examples/winterdeep.pdf) (a highland lake country),
-[gloamwake](examples/gloamwake.pdf) (isles).
-
-![A generated gazetteer page](docs/salt-reaches-gazetteer.png)
-
-## License
-
-MIT. The atlases you generate are yours.
+- Row-level security does the enforcing. Clients can only read and write their own profile, pups,
+  intake answers, bookings and payments. Only admins can edit site content or see other clients.
+  A database trigger stops anyone but an admin from changing a role.
+- Clients can only upload photos into `media/pets/<their user id>/`. Only admins can upload site
+  photos.
+- Admin text is rendered as plain text (paragraphs and bullet lists only, never HTML), and links
+  are limited to relative paths, `http(s)`, `mailto:` and `tel:`.
+- Theme colors are validated as hex before they are written into CSS.
