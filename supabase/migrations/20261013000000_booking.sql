@@ -122,7 +122,7 @@ alter table public.services
 
 comment on column public.services.daily_capacity is
   'Full-day and overnight services: how many can be booked per day/night (null = no limit)';
-comment on column public.services.start_minute is 'Full day: drop-off time. Overnight: check-in time.';
+comment on column public.services.start_minute is 'Full day: arrival time. Overnight: check-in time.';
 comment on column public.services.end_minute is 'Full day: pick-up time. Overnight: check-out time.';
 
 -- Meet & greets are open to new clients, happen at a set time and need a quick confirmation.
@@ -2012,8 +2012,6 @@ begin
     if s.client_reminders then perform private.send_client_reminders(v_local::date + 1); end if;
     if s.walker_digest then perform private.send_walker_digests(v_local::date + 1); end if;
   end if;
-
-  delete from private.digest_log where service_date < v_local::date - 30;
 end;
 $$;
 
