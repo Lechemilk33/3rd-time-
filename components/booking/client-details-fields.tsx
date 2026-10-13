@@ -50,14 +50,19 @@ export function ClientDetailsFields({
     <div className="space-y-5">
       <p className="text-ink-600">
         {meetGreet
-          ? "So we know where to find you, and how to reach you if anything changes."
+          ? "So we can text you where we’ll meet, and reach you if anything changes."
           : "Just once. We’ll keep these on your profile, where you can change them anytime."}
       </p>
 
       {need.phone || need.address ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {need.phone ? (
-            <Field label="Mobile number" htmlFor="c_phone" required help="We’ll text you when we’re on the way.">
+            <Field
+              label="Mobile number"
+              htmlFor="c_phone"
+              required
+              help={meetGreet ? "We’ll text you the meeting spot." : "We’ll text you when we’re on the way."}
+            >
               <Input
                 id="c_phone"
                 name="c_phone"
@@ -76,7 +81,7 @@ export function ClientDetailsFields({
               label="Your address"
               htmlFor="c_address"
               required
-              help={meetGreet ? `Where we’ll meet ${petLabel}.` : `Where we’ll come for ${petLabel}.`}
+              help={`Where we’ll come for ${petLabel}.`}
               className={cn(!need.phone && "sm:col-span-2")}
             >
               <Input

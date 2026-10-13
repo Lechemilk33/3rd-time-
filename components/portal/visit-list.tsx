@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CalendarPlus, CircleCheck, MessageSquareText, Repeat, X } from "lucide-react";
+import { CalendarClock, CalendarPlus, CircleCheck, MapPin, MessageSquareText, Repeat, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { cancelVisit, getAvailability, getServiceDays, rescheduleVisit } from "@/app/portal/booking-actions";
@@ -16,7 +16,9 @@ import {
   HANDOFF_META,
   hasLengthChoice,
   icsForVisits,
+  isMeetGreet,
   isMultiDay,
+  mapsUrl,
   petNames,
   STATUS_META,
   visitTimeLabel,
@@ -202,6 +204,7 @@ function VisitCard({
         start,
         end,
         description: w && pinned == null ? `Arrival window: ${w.label}` : "Waiting for Paws",
+        location: v.meeting_place ?? undefined,
       },
     ]);
     const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
@@ -246,6 +249,22 @@ function VisitCard({
             <p className="mt-0.5 text-sm font-bold text-ink-600">
               <span aria-hidden>{HANDOFF_META[v.handoff].emoji}</span>{" "}
               {v.handoff === "pickup" ? "We’ll pick your pup up from home" : `You’re dropping off${service?.bring_details ? ` · ${service.bring_details}` : ""}`}
+            </p>
+          ) : null}
+          {v.meeting_place ? (
+            <p className="mt-0.5 flex items-start gap-1.5 text-sm font-bold text-ink">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
+              <span>
+                Meeting at{" "}
+                <a href={mapsUrl(v.meeting_place)} target="_blank" rel="noreferrer" className="text-ocean underline">
+                  {v.meeting_place}
+                </a>
+              </span>
+            </p>
+          ) : isMeetGreet(v) ? (
+            <p className="mt-0.5 flex items-start gap-1.5 text-sm font-bold text-ink-600">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
+              We’ll meet at a public spot nearby and let you know where.
             </p>
           ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink-600">

@@ -249,6 +249,8 @@ export type Booking = {
   answers: FormAnswers;
   /** How the pup gets to us, for services that ask. */
   handoff: Handoff | null;
+  /** Where we meet them, picked by the team (meet & greets happen at a public spot). */
+  meeting_place: string | null;
   cancel_reason: string | null;
   invitee_name: string | null;
   invitee_email: string | null;

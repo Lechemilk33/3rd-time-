@@ -21,7 +21,7 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
     supabase.from("form_submissions").select("answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
     supabase
       .from("bookings")
-      .select("service_id, service_date, window_id, status, pets:booking_pets(pet_id)")
+      .select("service_id, service_date, window_id, status, meeting_place, pets:booking_pets(pet_id)")
       .eq("user_id", user.id)
       .in("status", ["requested", "scheduled"])
       .gte("service_date", todayIn("America/Los_Angeles")),
@@ -57,6 +57,7 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
           }
         >
           {meetGreet.status === "requested" ? "We’ll confirm the time by email. " : ""}
+          {meetGreet.meeting_place ? `We’ll meet at ${meetGreet.meeting_place}. ` : "We’ll pick a public spot nearby and let you know where. "}
           Once we’ve met your pup, we’ll approve your account and email you. Then you can book walks and everything else.
           <div className="mt-3">
             <ButtonLink href="/portal/visits" size="sm" variant="secondary">

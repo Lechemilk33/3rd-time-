@@ -338,8 +338,8 @@ export function BookingWizard({
         <Step n={n++} title="What do you need?" done={Boolean(service)} summary={service?.name} onEdit={() => pickService(null)}>
           {!approved ? (
             <Notice tone="info" className="mb-4" title="New here? Start with a meet & greet.">
-              We’ll come say hi, meet your pup and learn the routine. Once we’ve met, we’ll approve your account and
-              email you — then everything else unlocks.
+              We’ll meet you and your pup at a public spot nearby and learn the routine. Once we’ve met, we’ll approve
+              your account and email you — then everything else unlocks.
             </Notice>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -535,6 +535,15 @@ export function BookingWizard({
             hidden={!picked}
           >
             <form id={FORM_ID} onSubmit={submit} className="space-y-5">
+              {service.audience === "everyone" ? (
+                <p className="rounded-2xl bg-sea-50 p-4 text-sm">
+                  <span className="font-bold">
+                    <span aria-hidden>📍</span> We’ll meet at a public spot nearby
+                  </span>
+                  , like a local park, and let you know where before the day. Need to meet somewhere else? Just tell us
+                  below.
+                </p>
+              ) : null}
               {handoffs.length > 1 ? (
                 <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="How your pup gets to us">
                   {handoffs.map((h) => (
@@ -678,7 +687,7 @@ export function BookingWizard({
         {service && !needsQuestions && petIds.length && need && anyNeeded(need) ? (
           <Step
             n={n++}
-            title={service.audience === "everyone" ? "Where should we meet?" : "Before your first visit"}
+            title={service.audience === "everyone" ? "How can we reach you?" : "Before your first visit"}
             done={false}
             hidden={!picked || needsHandoff}
           >
@@ -707,6 +716,7 @@ export function BookingWizard({
               {service && picked ? <WhenSummary service={service} when={when} dates={dates} nights={nights} windowsById={windowsById} /> : <span className="text-ink-400">—</span>}
             </Row>
             {lengths.length ? <Row label="Length">{minutes ? formatDuration(minutes) : <span className="text-ink-400">—</span>}</Row> : null}
+            {service?.audience === "everyone" ? <Row label="Where">A public spot nearby. We’ll let you know.</Row> : null}
             {handoffs.length ? (
               <Row label="Getting there">{handoff ? HANDOFF_META[handoff].label : <span className="text-ink-400">—</span>}</Row>
             ) : null}

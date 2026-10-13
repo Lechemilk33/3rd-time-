@@ -267,7 +267,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
           intro: "",
           items: [
             { icon: "🐶", title: "Create your account", body: "Sign up and tell us about your pup. It takes two minutes." },
-            { icon: "👋", title: "Meet & greet", body: "Pick a time and we’ll come say hi so your pup can get to know us." },
+            { icon: "👋", title: "Meet & greet", body: "Pick a time and we’ll meet you nearby so your pup can get to know us." },
             { icon: "📅", title: "Book walks", body: "Once we’ve met, book online and pay securely from your portal." },
           ],
           background: "sand",
@@ -612,7 +612,7 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
   },
   {
     name: "Meet & Greet",
-    description: "Let’s meet! We’ll get to know your pup, your routine, and how to get in. No commitment.",
+    description: "Let’s meet at a public spot nearby, like a local park, so we can get to know your pup and your routine. No commitment.",
     price_cents: 0,
     price_label: null,
     duration_minutes: 20,

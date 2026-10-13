@@ -97,7 +97,7 @@ export type BookingDetail = Booking & {
   pets: BookingPet[];
   service: (Pick<Service, "id" | "name" | "price_cents" | "price_label" | "price_unit" | "kind" | "duration_minutes"> &
     Pick<Service, "start_minute" | "end_minute" | "min_nights" | "max_nights" | "confirmation"> &
-    Pick<Service, "duration_options" | "handoff_options" | "pickup_fee_cents" | "bring_details" | "allow_online_payment">) | null;
+    Pick<Service, "duration_options" | "handoff_options" | "pickup_fee_cents" | "bring_details" | "allow_online_payment" | "audience">) | null;
 };
 
 /**
@@ -367,17 +367,26 @@ export function initials(name: string) {
     .join("");
 }
 
+/** Google Maps search for an address or meeting spot. */
+export function mapsUrl(place: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
+}
+
+/** Meet & greets (the services everyone can book) happen at a public spot the team picks. */
+export const isMeetGreet = (b: { service: { audience: string } | null }) => b.service?.audience === "everyone";
+
 /** Supabase select for a booking with client, pups and service. */
 export const BOOKING_DETAIL_SELECT = `
   id, user_id, service_id, title, kind, start_time, end_time, status, source, service_date, end_date,
   window_id, arrival_time, planned_minute, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason, handoff,
-  invitee_name, invitee_email, paid_at, paid_cents, paid_via, payment_id, refunded_cents, created_at, updated_at,
+  meeting_place, invitee_name, invitee_email, paid_at, paid_cents, paid_via, payment_id, refunded_cents, created_at, updated_at,
   client:profiles!bookings_user_id_fkey (id, full_name, email, phone, address, access_notes,
     emergency_contact_name, emergency_contact_phone, booking_approved),
   pets:booking_pets (pet:pets (id, name, breed, photo_url, temperament, walking_notes, medical_notes,
     medications, feeding_notes)),
   service:services (id, name, price_cents, price_label, price_unit, kind, duration_minutes, start_minute, end_minute,
-    min_nights, max_nights, confirmation, duration_options, handoff_options, pickup_fee_cents, bring_details, allow_online_payment)
+    min_nights, max_nights, confirmation, duration_options, handoff_options, pickup_fee_cents, bring_details, allow_online_payment,
+    audience)
 `;
 
 type RawBooking = Omit<BookingDetail, "pets" | "client" | "service"> & {

@@ -24,11 +24,13 @@ import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, 
 import {
   cancelBooking,
   deleteBooking,
+  getMeetingPlaces,
   markVisitPaid,
   markVisitUnpaid,
   moveBooking,
   refundVisit,
   setBookingStatus,
+  setMeetingPlace,
   updateBooking,
 } from "@/app/admin/_actions/bookings";
 import { useCalendar, walkerColor } from "@/components/calendar/context";
@@ -42,8 +44,10 @@ import {
   dateSpanLabel,
   HANDOFF_META,
   hasLengthChoice,
+  isMeetGreet,
   isMultiDay,
   lengthOptions,
+  mapsUrl,
   petNames,
   STATUS_META,
   visitTimeLabel,
@@ -143,9 +147,7 @@ export function BookingDrawer({
     });
   };
 
-  const mapsUrl = b.client?.address
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.client.address)}`
-    : null;
+  const addressUrl = b.client?.address ? mapsUrl(b.client.address) : null;
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end" role="presentation">
@@ -311,6 +313,20 @@ export function BookingDrawer({
             ) : null}
           </Section>
 
+          {isMeetGreet(b) || b.meeting_place ? (
+            <Section title="Where to meet" icon={<MapPin className="size-4" />}>
+              {active ? (
+                <MeetingSpotEditor key={`${b.id}-${b.meeting_place ?? ""}`} booking={b} pending={pending} run={run} unsaved={unsaved} who={who} />
+              ) : b.meeting_place ? (
+                <a href={mapsUrl(b.meeting_place)} target="_blank" rel="noreferrer" className="font-bold text-ocean hover:underline">
+                  {b.meeting_place}
+                </a>
+              ) : (
+                <p className="text-ink-600">No spot was picked.</p>
+              )}
+            </Section>
+          ) : null}
+
           <PaymentSection booking={b} pending={pending} run={run} />
 
           {answers.length ? (
@@ -379,9 +395,9 @@ export function BookingDrawer({
                   </a>
                 </li>
               ) : null}
-              {b.client?.address && mapsUrl ? (
+              {b.client?.address && addressUrl ? (
                 <li>
-                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="inline-flex items-start gap-2 text-ocean hover:underline">
+                  <a href={addressUrl} target="_blank" rel="noreferrer" className="inline-flex items-start gap-2 text-ocean hover:underline">
                     <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden /> {b.client.address}
                   </a>
                 </li>
@@ -622,6 +638,83 @@ function NotesEditor({
           Save notes
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** The public spot we'll meet at. Recent spots are one tap away; saving emails a confirmed visit's client. */
+function MeetingSpotEditor({
+  booking: b,
+  pending,
+  run,
+  unsaved,
+  who,
+}: {
+  booking: BookingDetail;
+  pending: boolean;
+  run: Run;
+  unsaved?: RefObject<Set<string>>;
+  who: string;
+}) {
+  const [place, setPlace] = useState(b.meeting_place ?? "");
+  const [recent, setRecent] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    getMeetingPlaces().then((spots) => live && setRecent(spots), () => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  const dirty = place.trim() !== (b.meeting_place ?? "");
+  useUnsaved(unsaved, "meeting", dirty);
+  const save = () => run(() => setMeetingPlace(b.id, place));
+  const picks = recent.filter((spot) => spot !== place.trim());
+
+  return (
+    <div className="space-y-2.5">
+      {!b.meeting_place && b.status === "requested" ? (
+        <p className="rounded-xl bg-sun-100 p-2.5 text-sm font-semibold">Pick a public spot, then confirm. It goes in their confirmation email.</p>
+      ) : null}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (dirty) save();
+        }}
+      >
+        <Input
+          aria-label="Where to meet"
+          value={place}
+          maxLength={300}
+          onChange={(e) => setPlace(e.target.value)}
+          placeholder="e.g. Robb Field, by the playground"
+          className="py-2"
+        />
+        <Button type="submit" size="sm" variant="secondary" disabled={pending || !dirty} className="shrink-0">
+          Save
+        </Button>
+      </form>
+      {picks.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {picks.map((spot) => (
+            <button
+              key={spot}
+              type="button"
+              onClick={() => setPlace(spot)}
+              className="max-w-full truncate rounded-full border border-ink-100 bg-white px-3 py-1 text-xs font-bold text-ink-600 hover:border-ocean hover:text-ocean"
+            >
+              {spot}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {b.meeting_place ? (
+        <a href={mapsUrl(b.meeting_place)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-bold text-ocean hover:underline">
+          Open in Maps <ExternalLink className="size-3.5" aria-hidden />
+        </a>
+      ) : null}
+      {b.status === "scheduled" ? <p className="text-xs text-ink-400">{who} gets an email when you save a new spot.</p> : null}
+      {b.client_note ? <p className="text-xs text-ink-400">Check their note below in case they asked to meet somewhere specific.</p> : null}
     </div>
   );
 }

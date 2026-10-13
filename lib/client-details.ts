@@ -17,17 +17,18 @@ const blank = (v: string | null | undefined) => !v?.trim();
 /**
  * What we still need before this booking:
  * - phone: for any visit, so we can reach them
- * - address: whenever we come to them (everything except drop-offs)
+ * - address: whenever we come to them (everything except drop-offs and the meet & greet, which is at a
+ *   public spot we pick)
  * - how to get in, an emergency contact and vet permission: for visits we make without them, so not
  *   the meet & greet (the services everyone can book)
  */
 export function detailsNeeded(p: ClientDetails, service: Pick<Service, "audience">, handoff: Handoff | null): DetailsNeeded {
-  const atHome = handoff !== "bring";
   const care = service.audience !== "everyone";
+  const atHome = care && handoff !== "bring";
   return {
     phone: blank(p.phone),
     address: atHome && blank(p.address),
-    access: care && atHome && blank(p.access_notes),
+    access: atHome && blank(p.access_notes),
     emergency: care && (blank(p.emergency_contact_name) || blank(p.emergency_contact_phone)),
     vet: care && p.vet_care_ok == null,
   };

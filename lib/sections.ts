@@ -56,7 +56,7 @@ const intro: FieldDef = {
 
 export const DEFAULT_BOOKING_STEPS = [
   { title: "Create your free account", body: "Add your pup’s info and tell us about your routine." },
-  { title: "Book a meet & greet", body: "Pick a time that works — we’ll come say hi and learn the ropes." },
+  { title: "Book a meet & greet", body: "Pick a time that works — we’ll meet you nearby and learn the ropes." },
   { title: "Book walks anytime", body: "Choose a day and time window, or set up weekly walks. Change plans right from your portal." },
 ];
 

@@ -38,7 +38,7 @@ export default async function PortalHome() {
       .limit(4),
     supabase
       .from("bookings")
-      .select("service_id, status, service_date")
+      .select("service_id, status, service_date, meeting_place")
       .eq("user_id", user.id)
       .not("status", "in", "(canceled,declined)")
       .order("service_date")
@@ -86,7 +86,7 @@ export default async function PortalHome() {
       // Straight on to picking a time afterwards.
       href: `/portal/pets/new?next=${encodeURIComponent(meetGreetHref)}`,
     },
-    { done: Boolean(meetGreetBooking), title: "Book a free meet & greet", body: "Pick a time and we’ll come say hi.", href: meetGreetHref },
+    { done: Boolean(meetGreetBooking), title: "Book a free meet & greet", body: "Pick a time and we’ll meet you at a spot nearby.", href: meetGreetHref },
   ];
   const doneCount = steps.filter((s) => s.done).length;
 
@@ -109,7 +109,11 @@ export default async function PortalHome() {
             <h2 className="text-xl font-semibold">We can’t wait to meet {pupName}!</h2>
             <p className="mt-1 text-ink-600">
               {meetGreetBooking.service_date >= today
-                ? `Your meet & greet is on ${longDate(meetGreetBooking.service_date as Ymd)}. `
+                ? `Your meet & greet is on ${longDate(meetGreetBooking.service_date as Ymd)}. ${
+                    meetGreetBooking.meeting_place
+                      ? `We’ll meet at ${meetGreetBooking.meeting_place}. `
+                      : "We’ll pick a public spot nearby and let you know where. "
+                  }`
                 : ""}
               Afterwards we’ll approve your account and email you, and then you can book walks and everything else.
             </p>
