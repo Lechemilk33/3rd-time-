@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Field, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { TERMS_HREF } from "@/lib/legal";
 import {
   estimateTotal,
   HANDOFF_META,
@@ -699,8 +700,13 @@ export function BookingWizard({
                   : "Book it"}
           </Button>
           {!ready && hint ? <p className="-mt-1 text-center text-sm font-bold text-ink-600">{hint}</p> : null}
-          <p className="text-center text-xs text-ink-400">
-            Free to cancel up to {settings.cancel_cutoff_hours} hours before. Nothing to pay today.
+          <p className="text-center text-xs leading-relaxed text-ink-600">
+            Free to cancel or change up to {settings.cancel_cutoff_hours} hours before. Nothing to pay today. By booking, you
+            agree to our{" "}
+            <a href={TERMS_HREF} target="_blank" rel="noreferrer" className="font-bold text-ocean underline">
+              Terms of Service
+            </a>
+            .
           </p>
         </Card>
       </aside>

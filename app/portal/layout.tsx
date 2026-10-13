@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
-import { DashboardShell } from "@/components/dashboard/shell";
+import { Suspense } from "react";
+import { DashboardShell, LoadingPanel } from "@/components/dashboard/shell";
+import { TermsGate } from "@/components/portal/terms-gate";
 
 export const metadata: Metadata = { title: "Client portal", robots: { index: false } };
 
 export default function PortalLayout({ children }: LayoutProps<"/portal">) {
-  return <DashboardShell area="portal">{children}</DashboardShell>;
+  return (
+    <DashboardShell area="portal">
+      <Suspense fallback={<LoadingPanel />}>
+        <TermsGate>{children}</TermsGate>
+      </Suspense>
+    </DashboardShell>
+  );
 }

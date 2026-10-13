@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ExternalLink, Pencil } from "lucide-react";
 import Link from "next/link";
-import { movePage } from "@/app/admin/_actions/content";
+import { customizeBuiltInPage, movePage } from "@/app/admin/_actions/content";
 import { adminData } from "@/app/admin/_lib";
 import { NewPageForm } from "@/components/admin/page-forms";
 import { SeedPanel } from "@/components/admin/seed-panel";
@@ -8,6 +8,8 @@ import { PageTitle } from "@/components/dashboard/shell";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { BUILT_IN_PAGES, DEFAULT_PAGES } from "@/lib/defaults";
 import type { Page } from "@/lib/types";
 
 export default async function PagesPage() {
@@ -22,6 +24,8 @@ export default async function PagesPage() {
   }
   const { data } = await supabase.from("pages").select("*").order("position").order("created_at");
   const pages = (data ?? []) as Page[];
+  // Terms and privacy are always on the site; they appear here to edit even before they're saved.
+  const builtIn = DEFAULT_PAGES.filter((p) => BUILT_IN_PAGES.includes(p.slug) && !pages.some((x) => x.slug === p.slug));
 
   return (
     <>
@@ -64,6 +68,32 @@ export default async function PagesPage() {
                 <ButtonLink href={`/admin/pages/${page.id}`} size="sm" variant="secondary">
                   <Pencil className="size-4" aria-hidden /> Edit
                 </ButtonLink>
+              </div>
+            </li>
+          ))}
+          {builtIn.map((page) => (
+            <li key={page.slug} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 font-bold">
+                  {page.title}
+                  <Badge tone="gray">Linked in the footer</Badge>
+                </p>
+                <p className="text-sm text-ink-600">/{page.slug}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Link
+                  href={`/${page.slug}`}
+                  target="_blank"
+                  aria-label={`View ${page.title}`}
+                  className="grid size-9 place-items-center rounded-xl text-ink-600 hover:bg-sea-50"
+                >
+                  <ExternalLink className="size-4" />
+                </Link>
+                <form action={customizeBuiltInPage.bind(null, page.slug)}>
+                  <SubmitButton size="sm" variant="secondary" pendingText="Opening…">
+                    <Pencil className="size-4" aria-hidden /> Edit
+                  </SubmitButton>
+                </form>
               </div>
             </li>
           ))}

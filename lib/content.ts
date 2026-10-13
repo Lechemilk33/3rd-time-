@@ -1,6 +1,7 @@
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import {
+  BUILT_IN_PAGES,
   DEFAULT_INTAKE_FORM,
   DEFAULT_PAGES,
   DEFAULT_SERVICES,
@@ -149,7 +150,8 @@ export async function getPageContent(slug: string): Promise<PageContent | null> 
   }
   if (!page) {
     cacheLife("hours");
-    return null;
+    // Terms and privacy exist even before the team edits them.
+    return BUILT_IN_PAGES.includes(slug) ? defaultPageContent(slug) : null;
   }
 
   const { data: sections, error: sectionsError } = await supabase
@@ -185,7 +187,27 @@ export async function getPublishedSlugs(): Promise<string[]> {
     .eq("published", true)
     .neq("slug", "home");
   const slugs = (data ?? []).map((p) => p.slug as string);
-  return slugs.length ? slugs : fallback;
+  return slugs.length ? [...new Set([...slugs, ...BUILT_IN_PAGES])] : fallback;
+}
+
+export type BookingPolicy = { cancel_cutoff_hours: number; min_notice_hours: number };
+
+/** The booking rules quoted in the Terms of Service (set in Admin → Schedule). */
+export async function getBookingPolicy(): Promise<BookingPolicy> {
+  "use cache";
+  cacheTag(CONTENT_TAG);
+  const fallback = { cancel_cutoff_hours: 12, min_notice_hours: 12 };
+  if (!isSupabaseConfigured()) {
+    cacheLife("max");
+    return fallback;
+  }
+  const { data, error } = await createPublicClient().rpc("booking_policy");
+  if (error || !data) {
+    cacheLife("minutes");
+    return fallback;
+  }
+  cacheLife("hours");
+  return { ...fallback, ...(data as Partial<BookingPolicy>) };
 }
 
 export async function getServices(): Promise<Service[]> {

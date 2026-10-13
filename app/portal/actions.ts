@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { getForm } from "@/lib/content";
 import { createClient } from "@/lib/supabase/server";
 import { askedEachBooking, missingMessage, readAnswers, visibleFields } from "@/lib/intake";
+import { TERMS_VERSION } from "@/lib/legal";
 import type { ActionResult, FormAnswers } from "@/lib/types";
 import { formString } from "@/lib/utils";
 
@@ -30,6 +31,17 @@ export async function updateProfile(_prev: ActionResult | null, formData: FormDa
   if (error) return { ok: false, error: error.message };
   refresh();
   return { ok: true, message: "Saved! 🐾" };
+}
+
+/** A client agreeing to the current Terms of Service and Privacy Policy (asked once in the portal). */
+export async function acceptTerms(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireUser();
+  if (formData.get("agree") !== "on") return { ok: false, error: "Tick the box to agree, then continue." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("accept_terms", { p_version: TERMS_VERSION });
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, message: "Thanks!" };
 }
 
 function parseWeight(value: string | null) {

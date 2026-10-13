@@ -108,6 +108,23 @@ export const SECTION_TYPES: SectionTypeDef[] = [
     defaults: { eyebrow: "", heading: "Page title", intro: "", background: "sea" },
   },
   {
+    type: "document",
+    label: "Long text (policies)",
+    description: "A readable column of text with headings, for terms, policies and FAQs-style pages.",
+    icon: "📄",
+    fields: [
+      { key: "updated", label: "Date line", type: "text", placeholder: "Last updated October 13, 2026" },
+      {
+        key: "body",
+        label: "Text",
+        type: "textarea",
+        help: "Start a line with “## ” for a heading and “- ” for a bullet. {business}, {email} and {cancel_hours} fill in your business name, email and cancellation window.",
+      },
+      background,
+    ],
+    defaults: { updated: "", body: "", background: "white" },
+  },
+  {
     type: "features",
     label: "Highlights grid",
     description: "Icon cards for reasons to choose you, how it works, etc.",

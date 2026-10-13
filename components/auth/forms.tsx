@@ -13,6 +13,7 @@ import {
 import { Field, Input } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
 import { useFormAction } from "@/lib/use-form-action";
 
 /** Reads ?next= and ?error= from the URL, so render it inside <Suspense>. */
@@ -111,6 +112,20 @@ export function SignupForm({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
         />
       </Field>
+      <label className="flex cursor-pointer items-start gap-3 text-sm text-ink-600">
+        <input type="checkbox" name="agree" required className="mt-0.5 size-5 shrink-0 accent-ocean" disabled={disabled} />
+        <span>
+          I agree to the{" "}
+          <a href={TERMS_HREF} target="_blank" rel="noreferrer" className="font-bold text-ocean underline">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href={PRIVACY_HREF} target="_blank" rel="noreferrer" className="font-bold text-ocean underline">
+            Privacy Policy
+          </a>
+          .
+        </span>
+      </label>
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       <SubmitButton size="lg" className="w-full" pendingText="Creating your account…" pending={pending} disabled={disabled}>
         Create my account

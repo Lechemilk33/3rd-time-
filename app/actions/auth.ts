@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/env";
+import { TERMS_VERSION } from "@/lib/legal";
 import { getOrigin, safeNextPath } from "@/lib/origin";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types";
@@ -65,13 +66,15 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
 
   if (!fullName || !email || !password) return { ok: false, error: "Please fill in your name, email, and a password." };
   if (password.length < 8) return { ok: false, error: "Please choose a password with at least 8 characters." };
+  if (formData.get("agree") !== "on") return { ok: false, error: "Please agree to the Terms of Service and Privacy Policy to create your account." };
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { full_name: fullName, phone },
+      // Saved on the profile with the time they agreed (see handle_new_user).
+      data: { full_name: fullName, phone, terms_version: TERMS_VERSION },
       emailRedirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
     },
   });

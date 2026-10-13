@@ -3,6 +3,7 @@ import Link from "next/link";
 import { InstagramIcon } from "@/components/ui/icons";
 import { Logo } from "@/components/site/logo";
 import { getCopyrightYear, getNavLinks, getSiteSettings } from "@/lib/content";
+import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
 import { instagramHandle, safeHref } from "@/lib/utils";
 
 export async function Footer() {
@@ -104,7 +105,14 @@ export async function Footer() {
           <p>
             © {year} {settings.businessName}. Made with 🐾 in Ocean Beach.
           </p>
-          <p>{settings.tagline}</p>
+          <p className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link href={TERMS_HREF} className="hover:text-white">
+              Terms of Service
+            </Link>
+            <Link href={PRIVACY_HREF} className="hover:text-white">
+              Privacy Policy
+            </Link>
+          </p>
         </div>
       </div>
     </footer>

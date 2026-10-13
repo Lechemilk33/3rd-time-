@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { mergeSettings } from "@/lib/content";
-import { DEFAULT_INTAKE_FORM, DEFAULT_PAGES, DEFAULT_SERVICES } from "@/lib/defaults";
+import { BUILT_IN_PAGES, DEFAULT_INTAKE_FORM, DEFAULT_PAGES, DEFAULT_SERVICES } from "@/lib/defaults";
 import { SECTION_TYPE_MAP } from "@/lib/sections";
 import type { ActionResult, Section, SectionData, SiteSettings } from "@/lib/types";
 import { slugify } from "@/lib/utils";
@@ -56,6 +56,24 @@ export async function seedStarterContent(): Promise<ActionResult> {
 
   publishContentChange();
   return { ok: true, message: "Starter content loaded — everything is editable now!" };
+}
+
+/** Copies a built-in page (terms, privacy) into the editor the first time someone edits it. */
+export async function customizeBuiltInPage(slug: string): Promise<void> {
+  const supabase = await adminClient();
+  const def = DEFAULT_PAGES.find((p) => p.slug === slug && BUILT_IN_PAGES.includes(p.slug));
+  if (!def) redirect("/admin/pages");
+  const { sections, ...page } = def;
+  const { data: existing } = await supabase.from("pages").select("id").eq("slug", slug).maybeSingle();
+  let id = existing?.id as string | undefined;
+  if (!id) {
+    const { data: row, error } = await supabase.from("pages").insert(page).select("id").single();
+    if (error || !row) redirect("/admin/pages");
+    id = row.id as string;
+    await supabase.from("sections").insert(sections.map((s, i) => ({ ...s, page_id: id, position: i })));
+    publishContentChange();
+  }
+  redirect(`/admin/pages/${id}`);
 }
 
 // ---------------------------------------------------------------------------

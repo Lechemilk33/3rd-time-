@@ -125,6 +125,12 @@ Booking is built in — no third-party scheduler.
 
   Reminders run from a `pg_cron` job every hour. Use **Send a test** in Schedule to
   check delivery.
+- **Terms & privacy:** `/terms` and `/privacy` ship with plain-English starting text
+  (`lib/legal.ts`) and are linked from the footer, sign-up, booking and payments. The cancellation
+  window in the terms is filled in live from Admin → Schedule. Edit either page in Admin → Pages.
+  New clients tick “I agree” when they sign up; existing clients are asked once in the portal. Each
+  profile records the version and date they agreed to (shown on the client's admin page). Bump
+  `TERMS_VERSION` after a meaningful change to ask everyone again.
 - **Intake & booking questions:** one intake form for everyone; in **Admin → Intake & questions**
   each service has its own tab. A service’s questions are asked either **once** (on the intake
   form, or the first time the client books it) or **every time they book** it (shown in the

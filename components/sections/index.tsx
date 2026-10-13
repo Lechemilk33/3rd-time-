@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { BookingSection } from "@/components/sections/booking";
 import { ContactSection } from "@/components/sections/contact";
 import { CtaSection } from "@/components/sections/cta";
+import { DocumentSection } from "@/components/sections/document";
 import { FaqSection } from "@/components/sections/faq";
 import { FeaturesSection } from "@/components/sections/features";
 import { GallerySection } from "@/components/sections/gallery";
@@ -21,6 +22,7 @@ const RENDERERS: Record<string, ComponentType<{ data: SectionData }>> = {
   services: ServicesSection,
   text_image: TextImageSection,
   gallery: GallerySection,
+  document: DocumentSection,
   instagram_feed: InstagramFeedSection,
   service_area: ServiceAreaSection,
   testimonials: TestimonialsSection,

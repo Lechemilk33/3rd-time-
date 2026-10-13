@@ -1,4 +1,5 @@
 import { CreditCard } from "lucide-react";
+import Link from "next/link";
 import { startCheckout } from "@/app/actions/checkout";
 import { PageTitle } from "@/components/dashboard/shell";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +9,9 @@ import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requireUser } from "@/lib/auth";
 import { hasLengthChoice, lengthOptions, servicePrice } from "@/lib/booking";
-import { getServices } from "@/lib/content";
+import { getBookingPolicy, getServices } from "@/lib/content";
 import { formatDate, formatDuration, formatMoney } from "@/lib/format";
+import { TERMS_HREF } from "@/lib/legal";
 import { isStripeConfigured } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import type { Payment } from "@/lib/types";
@@ -23,10 +25,12 @@ const ERRORS: Record<string, string> = {
 export default async function PaymentsPage({ searchParams }: PageProps<"/portal/payments">) {
   const [user, params] = await Promise.all([requireUser(), searchParams]);
   const supabase = await createClient();
-  const [services, paymentsRes] = await Promise.all([
+  const [services, paymentsRes, policy] = await Promise.all([
     getServices(),
     supabase.from("payments").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+    getBookingPolicy(),
   ]);
+  const cancelHours = policy.cancel_cutoff_hours;
   const payments = (paymentsRes.data ?? []) as Payment[];
   const payable = services.filter(
     (s) =>
@@ -57,6 +61,15 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/portal/
             We’ll let you know when you can pay right here in the portal.
           </Notice>
         ) : (
+          <>
+          <p className="mb-4 max-w-2xl text-sm text-ink-600">
+            Payments are handled securely by Stripe. You can cancel or change a visit for free up to {cancelHours} hours
+            before it starts; see our{" "}
+            <Link href={TERMS_HREF} className="font-bold text-ocean underline">
+              Terms of Service
+            </Link>{" "}
+            for refunds and late cancellations. By paying, you agree to them.
+          </p>
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {payable.map((service) => (
               <li key={service.id}>
@@ -101,6 +114,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/portal/
               </li>
             ))}
           </ul>
+          </>
         )}
       </section>
 

@@ -1,3 +1,4 @@
+import { LEGAL_UPDATED, PRIVACY_TEXT, TERMS_TEXT } from "@/lib/legal";
 import { DEFAULT_BOOKING_STEPS } from "@/lib/sections";
 import { DEFAULT_THEME } from "@/lib/theme";
 import type { DurationOption, FormDefinition, Handoff, Page, Section, Service, SiteSettings } from "@/lib/types";
@@ -455,7 +456,29 @@ export const DEFAULT_PAGES: DefaultPage[] = [
       },
     ],
   },
+  legalPage("terms", "Terms of Service", 6, "The terms for booking walks and visits with Waiting for Paws.", "Plain-English terms for booking walks and visits with us.", TERMS_TEXT),
+  legalPage("privacy", "Privacy Policy", 7, "How Waiting for Paws collects, uses and protects your information.", "What we collect, why we need it, and how we keep it safe.", PRIVACY_TEXT),
 ];
+
+/** Terms and privacy: linked from the footer and sign-up, not the menu. */
+function legalPage(slug: string, title: string, position: number, seo: string, intro: string, body: string): DefaultPage {
+  return {
+    slug,
+    title,
+    nav_label: title,
+    show_in_nav: false,
+    published: true,
+    position,
+    seo_description: seo,
+    sections: [
+      { type: "page_header", visible: true, data: { eyebrow: "", heading: title, intro, background: "sea" } },
+      { type: "document", visible: true, data: { updated: LEGAL_UPDATED, body, background: "white" } },
+    ],
+  };
+}
+
+/** Pages every site has. Until the team edits them they're served from these defaults. */
+export const BUILT_IN_PAGES = ["terms", "privacy"];
 
 const WINDOW_VISIT = {
   kind: "window",

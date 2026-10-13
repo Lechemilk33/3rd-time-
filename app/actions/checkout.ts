@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { hasLengthChoice, lengthPrice } from "@/lib/booking";
 import { formatDuration } from "@/lib/format";
+import { TERMS_HREF } from "@/lib/legal";
 import { getOrigin } from "@/lib/origin";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
@@ -61,6 +62,11 @@ export async function startCheckout(formData: FormData) {
     ],
     metadata,
     payment_intent_data: { metadata },
+    custom_text: {
+      submit: {
+        message: `By paying, you agree to our Terms of Service, including cancellations and refunds: ${origin}${TERMS_HREF}`,
+      },
+    },
     success_url: `${origin}/portal/payments?success=1`,
     cancel_url: `${origin}/portal/payments?canceled=1`,
   });

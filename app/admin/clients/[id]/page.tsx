@@ -96,6 +96,11 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
             <Card>
               <h2 className="mb-3 text-xl font-semibold">Booking</h2>
               <ApprovalToggle userId={profile.id} approved={profile.booking_approved} />
+              <p className="mt-4 border-t border-ink-100 pt-3 text-sm text-ink-600">
+                {profile.terms_accepted_at
+                  ? `Agreed to the Terms of Service and Privacy Policy on ${formatDate(profile.terms_accepted_at)}.`
+                  : "Hasn’t agreed to the Terms of Service yet. They’ll be asked the next time they log in."}
+              </p>
             </Card>
           ) : null}
 

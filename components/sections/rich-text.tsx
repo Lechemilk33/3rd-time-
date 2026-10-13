@@ -1,12 +1,13 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Renders admin-entered plain text: blank lines split paragraphs and lines
- * starting with "- " become bullet lists. No HTML is ever interpreted.
+ * Renders admin-entered plain text: blank lines split paragraphs, lines starting with "- " become
+ * bullet lists and lines starting with "## " become headings. No HTML is ever interpreted.
  */
 export function RichText({ text, className }: { text: string; className?: string }) {
   const blocks = text
     .replace(/\r\n/g, "\n")
+    .replace(/^##[ \t]+(.+)$/gm, "\n\n## $1\n\n")
     .split(/\n{2,}/)
     .map((b) => b.trim())
     .filter(Boolean);
@@ -14,6 +15,13 @@ export function RichText({ text, className }: { text: string; className?: string
   return (
     <div className={cn("space-y-4 leading-relaxed", className)}>
       {blocks.map((block, i) => {
+        if (block.startsWith("## ")) {
+          return (
+            <h2 key={i} className="pt-4 font-display text-2xl leading-tight font-semibold text-ink">
+              {block.slice(3).trim()}
+            </h2>
+          );
+        }
         const lines = block.split("\n");
         if (lines.every((l) => /^[-•*]\s+/.test(l.trim()))) {
           return (

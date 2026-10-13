@@ -5,7 +5,7 @@ import { rpcError } from "@/lib/booking-server";
 import { isYmd } from "@/lib/dates";
 import type { BookingWindow } from "@/lib/booking";
 import type { ActionResult } from "@/lib/types";
-import { adminClient, clampText } from "./shared";
+import { adminClient, clampText, publishContentChange } from "./shared";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const int = (v: unknown, min: number, max: number, fallback: number) => {
@@ -44,7 +44,8 @@ export async function saveBookingRules(input: RulesInput): Promise<ActionResult>
     })
     .eq("id", 1);
   if (error) return { ok: false, error: rpcError(error) };
-  refresh();
+  // The Terms of Service quote the cancellation window.
+  publishContentChange();
   return { ok: true, message: "Booking rules saved." };
 }
 
