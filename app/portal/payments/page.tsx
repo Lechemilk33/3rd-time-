@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requireUser } from "@/lib/auth";
+import { hasLengthChoice, lengthOptions, servicePrice } from "@/lib/booking";
 import { getServices } from "@/lib/content";
 import { formatDate, formatDuration, formatMoney } from "@/lib/format";
 import { isStripeConfigured } from "@/lib/stripe";
@@ -27,7 +28,12 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/portal/
     supabase.from("payments").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
   ]);
   const payments = (paymentsRes.data ?? []) as Payment[];
-  const payable = services.filter((s) => s.allow_online_payment && s.price_cents && !s.id.startsWith("default-"));
+  const payable = services.filter(
+    (s) =>
+      s.allow_online_payment &&
+      !s.id.startsWith("default-") &&
+      (hasLengthChoice(s) ? s.duration_options.some((o) => o.price_cents) : s.price_cents),
+  );
   const stripeReady = isStripeConfigured();
   const error = typeof params.error === "string" ? ERRORS[params.error] : undefined;
 
@@ -57,14 +63,28 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/portal/
                 <Card className="flex h-full flex-col">
                   <h3 className="text-lg font-semibold">{service.name}</h3>
                   <p className="mt-1 font-display text-2xl font-semibold text-ocean">
-                    {formatMoney(service.price_cents)}{" "}
+                    {hasLengthChoice(service) ? servicePrice({ ...service, price_label: null, price_unit: "flat" }) : formatMoney(service.price_cents)}{" "}
                     <span className="font-sans text-sm font-bold text-ink-600">{service.price_label}</span>
                   </p>
-                  {service.duration_minutes ? (
+                  {service.duration_minutes && !hasLengthChoice(service) ? (
                     <p className="text-sm text-ink-600">{formatDuration(service.duration_minutes)}</p>
                   ) : null}
-                  <form action={startCheckout} className="mt-auto flex items-end gap-2 pt-5">
+                  <form action={startCheckout} className="mt-auto flex flex-wrap items-end gap-2 pt-5">
                     <input type="hidden" name="service_id" value={service.id} />
+                    {hasLengthChoice(service) ? (
+                      <label className="w-full">
+                        <span className="mb-1 block text-xs font-bold text-ink-600">Length</span>
+                        <Select name="minutes">
+                          {lengthOptions(service)
+                            .filter((o) => o.price_cents)
+                            .map((o) => (
+                              <option key={o.minutes} value={o.minutes}>
+                                {formatDuration(o.minutes)} · {formatMoney(o.price_cents)}
+                              </option>
+                            ))}
+                        </Select>
+                      </label>
+                    ) : null}
                     <label className="w-20">
                       <span className="mb-1 block text-xs font-bold text-ink-600">Qty</span>
                       <Select name="quantity" defaultValue="1">

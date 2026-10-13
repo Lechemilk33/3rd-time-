@@ -3,7 +3,7 @@
 import { CalendarDays, KeyRound, MapPin, Phone } from "lucide-react";
 import { useMemo } from "react";
 import { useCalendar, walkerColor } from "@/components/calendar/context";
-import { PetStack, StatusGlyph } from "@/components/calendar/event-bits";
+import { HandoffGlyph, PetStack, StatusGlyph } from "@/components/calendar/event-bits";
 import { Badge } from "@/components/ui/badge";
 import {
   clientName,
@@ -97,6 +97,7 @@ export function AgendaList({ bookings, from, to }: { bookings: BookingDetail[]; 
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5 font-extrabold">
                           <StatusGlyph status={b.status} />
+                          <HandoffGlyph handoff={b.handoff} />
                           <span className="truncate">{petNames(b.pets) || clientName(b)}</span>
                           <span className="font-semibold text-ink-600">· {b.title}</span>
                         </span>

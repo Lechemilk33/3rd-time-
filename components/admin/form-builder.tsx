@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { KIND_META } from "@/lib/booking";
-import { askedEachBooking } from "@/lib/intake";
+import { askedEachBooking, canHaveDetails } from "@/lib/intake";
 import type { FormDefinition, FormField, FormFieldType, ServiceKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -82,7 +82,8 @@ export function FormBuilder({
 
   /** Adds a field right after the last one in the same group (or at the end). */
   function add(field: Omit<FormField, "id">, after: string[]) {
-    const created = { ...field, id: newFieldId() } as FormField;
+    // Yes/no answers usually need a "but…", so new ones come with a notes box.
+    const created = { ...field, ...(field.type === "yesno" ? { details: true } : {}), id: newFieldId() } as FormField;
     setForm((f) => {
       const list = [...f.fields];
       const last = after.length ? list.findIndex((x) => x.id === after[after.length - 1]) : -1;
@@ -344,10 +345,18 @@ function QuestionCard({
               />
             ) : null}
           </div>
-          <label className="flex items-center gap-2 pt-2 text-sm font-bold">
-            <input type="checkbox" className="size-5 accent-ocean" checked={Boolean(field.required)} onChange={(e) => onChange({ required: e.target.checked })} />
-            Required
-          </label>
+          <div className="space-y-2 pt-2">
+            <label className="flex items-center gap-2 text-sm font-bold">
+              <input type="checkbox" className="size-5 accent-ocean" checked={Boolean(field.required)} onChange={(e) => onChange({ required: e.target.checked })} />
+              Required
+            </label>
+            {canHaveDetails(field.type) ? (
+              <label className="flex items-center gap-2 text-sm font-bold" title="Adds an optional “Tell us more” box under the answer.">
+                <input type="checkbox" className="size-5 accent-ocean" checked={Boolean(field.details)} onChange={(e) => onChange({ details: e.target.checked || undefined })} />
+                Notes box
+              </label>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </li>

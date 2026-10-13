@@ -2,13 +2,13 @@
 
 import { refresh } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import type { Availability, DayAvailability } from "@/lib/booking";
+import { handoffOrNull, lengthOrNull, type Availability, type DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
 import { bookingQuestions, fieldsForService, missingMessage, readAnswers, unansweredForService } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionResult, FormAnswers } from "@/lib/types";
+import type { ActionResult, FormAnswers, Handoff } from "@/lib/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -30,11 +30,15 @@ export async function getServiceDays(serviceId: string, from: string, to: string
 }
 
 /** Set-time services: start times still open on a day (minutes after midnight). */
-export async function getTimeSlots(serviceId: string, date: string): Promise<{ minute: number; window_id: string }[]> {
+export async function getTimeSlots(
+  serviceId: string,
+  date: string,
+  minutes?: number | null,
+): Promise<{ minute: number; window_id: string }[]> {
   await requireUser();
   if (!UUID.test(serviceId) || !isYmd(date)) return [];
   const supabase = await createClient();
-  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date });
+  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date, p_duration: lengthOrNull(minutes) });
   return (data ?? []) as { minute: number; window_id: string }[];
 }
 
@@ -54,6 +58,10 @@ export type BookInput = {
   arrivalMinute?: number | null;
   /** Overnight stays: check-out date. */
   endDate?: string | null;
+  /** Length picked, for services that offer a choice. */
+  minutes?: number | null;
+  /** How the pup gets to us, for services that ask. */
+  handoff?: Handoff | null;
   note: string;
 };
 
@@ -95,6 +103,8 @@ export async function bookVisits(input: BookInput, answers?: FormData): Promise<
     p_end_date: endDate,
     p_note: typeof input.note === "string" ? input.note.slice(0, 1000) : null,
     p_answers: saved,
+    p_duration: lengthOrNull(input.minutes),
+    p_handoff: handoffOrNull(input.handoff),
   });
   if (error) return { ok: false, error: rpcError(error) };
 

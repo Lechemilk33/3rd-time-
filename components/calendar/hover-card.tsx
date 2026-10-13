@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useCalendar, walkerColor } from "@/components/calendar/context";
 import { PetAvatar } from "@/components/calendar/event-bits";
 import { Badge } from "@/components/ui/badge";
-import { clientName, dateSpanLabel, isMultiDay, STATUS_META, visitTimeLabel, type BookingDetail } from "@/lib/booking";
+import { clientName, dateSpanLabel, HANDOFF_META, isMultiDay, STATUS_META, visitTimeLabel, type BookingDetail } from "@/lib/booking";
 import { longDate } from "@/lib/dates";
 import { formatDuration } from "@/lib/format";
 import { answerRows } from "@/lib/intake";
@@ -91,6 +91,11 @@ export function HoverCard({
               {visitTimeLabel(b, cal.windows, cal.timeZone)}
               {isMultiDay(b) ? "" : ` · ${formatDuration(b.duration_minutes)}`}
             </p>
+            {b.handoff ? (
+              <p className="font-bold text-ink">
+                <span aria-hidden>{HANDOFF_META[b.handoff].emoji}</span> {HANDOFF_META[b.handoff].team}
+              </p>
+            ) : null}
             {window_ && !b.arrival_time && (b.status === "scheduled" || b.status === "requested") ? (
               <p className="mt-0.5 text-xs font-semibold text-ink-400">No exact time yet — drag it to pin one.</p>
             ) : null}

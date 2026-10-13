@@ -3,7 +3,7 @@
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { isMovable, tint, useCalendar, walkerColor } from "@/components/calendar/context";
-import { StatusGlyph, WindowGlyph } from "@/components/calendar/event-bits";
+import { HandoffGlyph, StatusGlyph, WindowGlyph } from "@/components/calendar/event-bits";
 import { clientName, isMultiDay, petNames, shortName, visitStartMinute, visitTimeLabel, type BookingDetail } from "@/lib/booking";
 import { layoutOverlaps, type LayoutBox } from "@/lib/calendar";
 import { minuteLabel, shortDate, type Ymd } from "@/lib/dates";
@@ -429,6 +429,7 @@ function EventBlock({
     >
       <span className={cn("flex min-w-0 items-center gap-1 font-extrabold", inactive && "line-through")}>
         <StatusGlyph status={b.status} />
+        <HandoffGlyph handoff={b.handoff} />
         {pinned ? (
           <span className="shrink-0 font-bold text-ink-600">{minuteLabel(p.start, true)}</span>
         ) : (

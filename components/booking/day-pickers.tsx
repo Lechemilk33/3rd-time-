@@ -246,6 +246,7 @@ export function TimeSlotPicker({
   date,
   minute,
   onChange,
+  length,
   slotsFor = getTimeSlots,
 }: {
   serviceId: string;
@@ -257,22 +258,24 @@ export function TimeSlotPicker({
   date: Ymd | null;
   minute: number | null;
   onChange: (date: Ymd, minute: number | null) => void;
-  slotsFor?: (serviceId: string, date: Ymd) => Promise<{ minute: number }[]>;
+  /** Appointment length, when the client picks one (longer ones fit fewer start times). */
+  length?: number | null;
+  slotsFor?: (serviceId: string, date: Ymd, length?: number | null) => Promise<{ minute: number }[]>;
 }) {
   const [slots, setSlots] = useState<{ key: string; minutes: number[] } | null>(null);
-  const key = date ? `${serviceId}:${date}` : null;
+  const key = date ? `${serviceId}:${date}:${length ?? ""}` : null;
   const current = slots && slots.key === key ? slots.minutes : null;
 
   useEffect(() => {
     if (!date) return;
     let cancelled = false;
-    slotsFor(serviceId, date).then((rows) => {
-      if (!cancelled) setSlots({ key: `${serviceId}:${date}`, minutes: rows.map((r) => r.minute) });
+    slotsFor(serviceId, date, length).then((rows) => {
+      if (!cancelled) setSlots({ key: `${serviceId}:${date}:${length ?? ""}`, minutes: rows.map((r) => r.minute) });
     });
     return () => {
       cancelled = true;
     };
-  }, [serviceId, date, slotsFor]);
+  }, [serviceId, date, length, slotsFor]);
 
   const groups = useMemo(() => {
     const g: { label: string; minutes: number[] }[] = [

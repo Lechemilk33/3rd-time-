@@ -104,6 +104,10 @@ Booking is built in — no third-party scheduler.
   length) or reassign walkers (Day view), click an empty slot to book. Updates live via Supabase
   Realtime. Each admin can subscribe to a private iCal feed (`/api/calendar/<token>`) from
   Google or Apple Calendar.
+- **Services** are booked in a time window, at a set time, for a full day or overnight. A service
+  can let clients pick how long (e.g. a 30- or 60-minute walk, each with its own price) and how the
+  pup gets there (picked up from home, with an optional fee, or dropped off). Intake questions can
+  carry an optional “Tell us more” notes box.
 - **Emails** (confirmations, requests, changes, cancellations, evening-before reminders, each
   walker’s next-day schedule, “you’re approved” for new clients, and a heads-up when a request
   expires unconfirmed) are sent from the database with Resend through `pg_net`, so they go

@@ -5,6 +5,22 @@ import type { FormAnswers, FormField } from "@/lib/types";
  * up for Drop-In Visits"), so each client answers what applies to them.
  */
 
+const DETAIL_TYPES = new Set<FormField["type"]>(["yesno", "radio", "select", "checkboxes"]);
+
+/** Choice questions can carry an optional "Tell us more" notes box. */
+export function canHaveDetails(type: FormField["type"]) {
+  return DETAIL_TYPES.has(type);
+}
+
+export function hasDetails(field: FormField) {
+  return Boolean(field.details) && canHaveDetails(field.type);
+}
+
+/** Where a question's notes are saved in the answers ("treats_ok" → "treats_ok__details"). */
+export function detailsKey(fieldId: string) {
+  return `${fieldId}__details`;
+}
+
 export function appliesTo(field: FormField, serviceIds: readonly string[]) {
   return !field.services?.length || field.services.some((id) => serviceIds.includes(id));
 }
@@ -63,12 +79,16 @@ export function answerRows(fields: FormField[], answers: FormAnswers | null | un
   for (const f of fields) {
     if (f.type === "heading") continue;
     known.add(f.id);
+    known.add(detailsKey(f.id));
     const v = answers[f.id];
-    if (!isAnswered(f, v)) continue;
-    rows.push({ id: f.id, label: f.label, value: Array.isArray(v) ? v.join(", ") : v === true ? "Yes" : String(v) });
+    const note = answers[detailsKey(f.id)];
+    const noteText = typeof note === "string" ? note.trim() : "";
+    if (!isAnswered(f, v) && !noteText) continue;
+    const main = !isAnswered(f, v) ? "" : Array.isArray(v) ? v.join(", ") : v === true ? "Yes" : String(v);
+    rows.push({ id: f.id, label: f.label, value: [main, noteText].filter(Boolean).join(" — ") });
   }
   for (const [id, v] of Object.entries(answers)) {
-    if (known.has(id) || v === "" || v == null || (Array.isArray(v) && !v.length)) continue;
+    if (known.has(id) || id.endsWith("__details") || v === "" || v == null || (Array.isArray(v) && !v.length)) continue;
     rows.push({ id, label: "Earlier question", value: Array.isArray(v) ? v.join(", ") : v === true ? "Yes" : String(v) });
   }
   return rows;
@@ -107,6 +127,10 @@ export function readAnswers(
   for (const field of fields) {
     if (field.type === "heading") continue;
     const key = `f_${field.id}`;
+    // The optional notes box is read even when the choice itself was left blank.
+    if (hasDetails(field) && formData.has(`${key}__details`)) {
+      answers[detailsKey(field.id)] = String(formData.get(`${key}__details`) ?? "").trim().slice(0, 2000);
+    }
     if (!formData.has(key) && field.type !== "agreement" && field.type !== "checkboxes") continue;
     let value: string | string[] | boolean;
     if (field.type === "checkboxes") {

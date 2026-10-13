@@ -32,7 +32,7 @@ export default async function IntakePage() {
     supabase.from("form_submissions").select("*").eq("form_slug", form.slug).eq("user_id", user.id).maybeSingle<FormSubmission>(),
     supabase
       .from("services")
-      .select("id, name, description, price_cents, price_label, price_unit, duration_minutes, kind, start_minute, end_minute")
+      .select("id, name, description, price_cents, price_label, price_unit, duration_minutes, kind, start_minute, end_minute, duration_options")
       .eq("active", true)
       .order("position"),
   ]);

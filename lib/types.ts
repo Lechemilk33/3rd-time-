@@ -85,9 +85,20 @@ export type Service = {
   /** Overnight services: allowed stay length. */
   min_nights: number;
   max_nights: number;
+  /** Lengths clients pick from (a 30- or 60-minute walk), each with its own price. Empty = always duration_minutes. */
+  duration_options: DurationOption[];
+  /** How the pup gets to us: picked up from home and/or brought by the client. Empty = it happens at home. */
+  handoff_options: Handoff[];
+  /** Extra per booking when we pick the pup up. */
+  pickup_fee_cents: number | null;
+  /** Where/when clients bring their pup, shown when they choose that. */
+  bring_details: string | null;
 };
 
 export type ServiceKind = "window" | "time" | "day" | "stay";
+export type DurationOption = { minutes: number; price_cents: number | null };
+/** pickup = we collect the pup from home; bring = the client drops their pup off. */
+export type Handoff = "pickup" | "bring";
 export type PriceUnit = "visit" | "hour" | "day" | "night" | "flat";
 
 export type GalleryPhoto = {
@@ -124,6 +135,8 @@ export type FormField = {
   services?: string[];
   /** once = on the intake form (default); each = every time one of `services` is booked. */
   ask?: "once" | "each";
+  /** Adds an optional notes box under the answer ("Tell us more"), saved as `<id>__details`. */
+  details?: boolean;
 };
 
 export type FormDefinition = {
@@ -211,6 +224,8 @@ export type Booking = {
   client_note: string | null;
   /** Answers to the service's "every booking" questions. */
   answers: FormAnswers;
+  /** How the pup gets to us, for services that ask. */
+  handoff: Handoff | null;
   cancel_reason: string | null;
   invitee_name: string | null;
   invitee_email: string | null;

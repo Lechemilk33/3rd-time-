@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { isMovable, tint, useCalendar, walkerColor } from "@/components/calendar/context";
-import { StatusGlyph } from "@/components/calendar/event-bits";
+import { HandoffGlyph, StatusGlyph } from "@/components/calendar/event-bits";
 import { clientName, petNames, shortName, stayLength, visitTimeLabel, type BookingDetail } from "@/lib/booking";
 import { addDays, shortDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -250,6 +250,7 @@ function BarButton({
     >
       {bar.clipStart ? <ChevronLeft className="size-3 shrink-0 text-ink-400" aria-hidden /> : null}
       <StatusGlyph status={b.status} />
+      <HandoffGlyph handoff={b.handoff} />
       <span aria-hidden>{b.kind === "stay" ? "🌙" : "☀️"}</span>
       <span className="truncate font-extrabold">{who}</span>
       <span className="hidden truncate font-semibold text-ink-600 sm:inline">

@@ -1,6 +1,6 @@
 import { diffDays, formatYmd, minuteLabel, minuteRange, timeToMinutes, type Ymd } from "@/lib/dates";
 import { formatDuration, formatMoney } from "@/lib/format";
-import type { Booking, BookingStatus, PriceUnit, Service, ServiceKind } from "@/lib/types";
+import type { Booking, BookingStatus, DurationOption, Handoff, PriceUnit, Service, ServiceKind } from "@/lib/types";
 
 /** Shared booking types and helpers (safe for client and server components). */
 
@@ -76,7 +76,8 @@ export type BookingDetail = Booking & {
   client: BookingClient | null;
   pets: BookingPet[];
   service: (Pick<Service, "id" | "name" | "price_cents" | "price_label" | "price_unit" | "kind" | "duration_minutes"> &
-    Pick<Service, "start_minute" | "end_minute" | "min_nights" | "max_nights" | "confirmation">) | null;
+    Pick<Service, "start_minute" | "end_minute" | "min_nights" | "max_nights" | "confirmation"> &
+    Pick<Service, "duration_options" | "handoff_options" | "pickup_fee_cents" | "bring_details">) | null;
 };
 
 export type Availability = { service_date: Ymd; window_id: string; capacity: number; remaining: number };
@@ -168,38 +169,102 @@ export function priceUnitLabel(s: Pick<Service, "price_label" | "price_unit">) {
   return s.price_label || (s.price_unit && s.price_unit !== "visit" && s.price_unit !== "flat" ? PRICE_UNITS[s.price_unit] : "");
 }
 
-/** "$75 per night" / "$25" / "Free". */
-export function servicePrice(s: Pick<Service, "price_cents" | "price_label" | "price_unit">) {
-  if (s.price_cents == null) return s.price_label || "";
-  if (s.price_cents === 0) return "Free";
-  const unit = priceUnitLabel(s);
-  return unit ? `${formatMoney(s.price_cents)} ${unit}` : formatMoney(s.price_cents);
+type Lengths = Partial<Pick<Service, "duration_options">>;
+
+/** Whether clients pick how long (a 30- or 60-minute walk). */
+export function hasLengthChoice(s: Lengths) {
+  return (s.duration_options?.length ?? 0) > 1;
 }
 
-/** "30 min" / "8 AM – 5 PM" / "Check-in 5 PM · check-out 10 AM". */
-export function serviceTiming(s: Pick<Service, "kind" | "duration_minutes" | "start_minute" | "end_minute">) {
+/** Lengths a client can pick, shortest first. A fixed-length service gives just its one length. */
+export function lengthOptions(s: Pick<Service, "duration_minutes" | "price_cents"> & Lengths): DurationOption[] {
+  if (!hasLengthChoice(s)) return [{ minutes: s.duration_minutes ?? 30, price_cents: s.price_cents }];
+  return [...s.duration_options!].sort((a, b) => a.minutes - b.minutes);
+}
+
+/** Price of one booking of the given length: that length's price, else the service price. */
+export function lengthPrice(s: Pick<Service, "price_cents"> & Lengths, minutes?: number | null): number | null {
+  const option = hasLengthChoice(s) && minutes != null ? s.duration_options!.find((o) => o.minutes === minutes) : undefined;
+  return option ? option.price_cents : s.price_cents;
+}
+
+/** "$75 per night" / "$25" / "From $25 per walk" / "Free". */
+export function servicePrice(s: Pick<Service, "price_cents" | "price_label" | "price_unit"> & Lengths) {
+  const unit = priceUnitLabel(s);
+  const withUnit = (text: string) => (unit ? `${text} ${unit}` : text);
+  if (hasLengthChoice(s)) {
+    const prices = s.duration_options!.map((o) => o.price_cents).filter((p): p is number => p != null);
+    if (!prices.length) return s.price_label || "";
+    const low = Math.min(...prices);
+    if (Math.max(...prices) === 0) return "Free";
+    return withUnit(low === Math.max(...prices) ? formatMoney(low) : `From ${formatMoney(low)}`);
+  }
+  if (s.price_cents == null) return s.price_label || "";
+  if (s.price_cents === 0) return "Free";
+  return withUnit(formatMoney(s.price_cents));
+}
+
+/** "30 min" / "30 min or 1 hr" / "8 AM – 5 PM" / "Check-in 5 PM · check-out 10 AM". */
+export function serviceTiming(s: Pick<Service, "kind" | "duration_minutes" | "start_minute" | "end_minute"> & Lengths) {
   if (s.kind === "day") return minuteRange(serviceStartMinute(s), serviceEndMinute(s));
   if (s.kind === "stay") return `Check-in ${minuteLabel(serviceStartMinute(s))} · check-out ${minuteLabel(serviceEndMinute(s))}`;
+  if (hasLengthChoice(s)) {
+    const lengths = lengthOptions({ ...s, price_cents: null }).map((o) => formatDuration(o.minutes));
+    return lengths.length <= 3 ? lengths.join(" or ") : `${lengths[0]} – ${lengths[lengths.length - 1]}`;
+  }
   return formatDuration(s.duration_minutes);
 }
 
-/** Estimated total for a booking, when the price scales with its length. */
+/** A length (minutes) worth sending to the database, else null. */
+export function lengthOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 5 && value <= 720 ? value : null;
+}
+
+export function handoffOrNull(value: unknown): Handoff | null {
+  return value === "pickup" || value === "bring" ? value : null;
+}
+
+/** How the pup gets to us, in each audience's words. */
+export const HANDOFF_META: Record<Handoff, { label: string; client: string; team: string; emoji: string }> = {
+  pickup: { label: "Pick-up", client: "Pick my pup up from home", team: "Pick up from home", emoji: "🚗" },
+  bring: { label: "Drop-off", client: "I’ll drop my pup off", team: "Client drops off", emoji: "📍" },
+};
+
+/** "$40" for the length booked (+ pick-up fee) — falls back to the service's price wording. */
+export function bookingPriceLabel(b: Pick<BookingDetail, "service" | "duration_minutes" | "handoff">): string {
+  const s = b.service;
+  if (!s) return "";
+  const base = hasLengthChoice(s)
+    ? (() => {
+        const p = lengthPrice(s, b.duration_minutes);
+        return p == null ? s.price_label || "" : p === 0 ? "Free" : [formatMoney(p), priceUnitLabel(s)].filter(Boolean).join(" ");
+      })()
+    : servicePrice(s);
+  const fee = b.handoff === "pickup" && s.pickup_fee_cents ? ` + ${formatMoney(s.pickup_fee_cents)} pick-up` : "";
+  return base ? base + fee : "";
+}
+
+/** Estimated total for a booking: the chosen length's price (scaled by nights/days/visits) plus any pick-up fee. */
 export function estimateTotal(
-  s: Pick<Service, "price_cents" | "price_unit" | "duration_minutes">,
+  s: Pick<Service, "price_cents" | "price_unit" | "duration_minutes"> & Lengths & Partial<Pick<Service, "pickup_fee_cents">>,
   units: { nights?: number; days?: number; visits?: number; pets?: number },
+  choice: { minutes?: number | null; handoff?: Handoff | null } = {},
 ): number | null {
-  if (s.price_cents == null || s.price_cents === 0) return null;
+  const price = lengthPrice(s, choice.minutes);
+  if (price == null || price === 0) return null;
+  const bookings = s.price_unit === "night" || s.price_unit === "flat" ? 1 : (units.visits ?? units.days ?? 1);
+  const fee = choice.handoff === "pickup" ? (s.pickup_fee_cents ?? 0) * bookings : 0;
   switch (s.price_unit) {
     case "night":
-      return s.price_cents * (units.nights ?? 1);
+      return price * (units.nights ?? 1) + fee;
     case "day":
-      return s.price_cents * (units.days ?? units.nights ?? 1);
+      return price * (units.days ?? units.nights ?? 1) + fee;
     case "hour":
-      return Math.round((s.price_cents * (s.duration_minutes ?? 60)) / 60) * (units.visits ?? 1);
+      return Math.round((price * (choice.minutes ?? s.duration_minutes ?? 60)) / 60) * (units.visits ?? 1) + fee;
     case "flat":
-      return s.price_cents;
+      return price + fee;
     default:
-      return s.price_cents * (units.visits ?? 1);
+      return price * (units.visits ?? 1) + fee;
   }
 }
 
@@ -280,14 +345,14 @@ export function initials(name: string) {
 /** Supabase select for a booking with client, pups and service. */
 export const BOOKING_DETAIL_SELECT = `
   id, user_id, service_id, title, kind, start_time, end_time, status, source, service_date, end_date,
-  window_id, arrival_time, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason,
+  window_id, arrival_time, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason, handoff,
   invitee_name, invitee_email, created_at, updated_at,
   client:profiles!bookings_user_id_fkey (id, full_name, email, phone, address, access_notes,
     emergency_contact_name, emergency_contact_phone, booking_approved),
   pets:booking_pets (pet:pets (id, name, breed, photo_url, temperament, walking_notes, medical_notes,
     medications, feeding_notes)),
   service:services (id, name, price_cents, price_label, price_unit, kind, duration_minutes, start_minute, end_minute,
-    min_nights, max_nights, confirmation)
+    min_nights, max_nights, confirmation, duration_options, handoff_options, pickup_fee_cents, bring_details)
 `;
 
 type RawBooking = Omit<BookingDetail, "pets" | "client" | "service"> & {

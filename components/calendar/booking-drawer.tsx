@@ -33,11 +33,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import {
+  bookingPriceLabel,
   clientName,
   dateSpanLabel,
+  HANDOFF_META,
+  hasLengthChoice,
   isMultiDay,
+  lengthOptions,
   petNames,
-  servicePrice,
   STATUS_META,
   visitTimeLabel,
   windowRange,
@@ -46,7 +49,7 @@ import {
 import { addDays, diffDays, isYmd, longDate, minutesToTimeInput, timeToMinutes } from "@/lib/dates";
 import { formatDate, formatDuration } from "@/lib/format";
 import { answerRows } from "@/lib/intake";
-import type { ActionResult } from "@/lib/types";
+import type { ActionResult, Handoff } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Panel = null | "cancel" | "decline" | "move";
@@ -172,7 +175,7 @@ export function BookingDrawer({
             </h2>
             <p className="font-bold text-ink-600">
               {b.title}
-              {b.service && servicePrice(b.service) ? ` · ${servicePrice(b.service)}` : ""}
+              {bookingPriceLabel(b) ? ` · ${bookingPriceLabel(b)}` : ""}
             </p>
           </div>
           <button
@@ -288,6 +291,13 @@ export function BookingDrawer({
               {visitTimeLabel(b, cal.windows, cal.timeZone)}
               {isMultiDay(b) ? "" : ` · ${formatDuration(b.duration_minutes)}`}
             </p>
+            {active && b.service && (hasLengthChoice(b.service) || b.service.handoff_options.length || b.handoff) ? (
+              <OptionsEditor key={`${b.id}-${b.duration_minutes}-${b.handoff}`} booking={b} pending={pending} run={run} />
+            ) : b.handoff ? (
+              <p className="font-bold text-ink">
+                <span aria-hidden>{HANDOFF_META[b.handoff].emoji}</span> {HANDOFF_META[b.handoff].team}
+              </p>
+            ) : null}
             {active && !isMultiDay(b) ? <ArrivalEditor key={`${b.id}-${b.arrival_time}`} booking={b} pending={pending} run={run} /> : null}
             {window_ && !b.arrival_time ? (
               <p className="mt-1 text-xs font-semibold text-ink-400">
@@ -709,6 +719,56 @@ function MovePanel({
           Never mind
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Change the length booked and how the pup gets to us; each change saves right away. */
+function OptionsEditor({ booking: b, pending, run }: { booking: BookingDetail; pending: boolean; run: Run }) {
+  const service = b.service!;
+  const lengths = hasLengthChoice(service) && !isMultiDay(b) ? lengthOptions(service).map((o) => o.minutes) : [];
+  if (lengths.length && !lengths.includes(b.duration_minutes)) lengths.push(b.duration_minutes);
+  const handoffs = [...new Set([...service.handoff_options, ...(b.handoff ? [b.handoff] : [])])];
+  return (
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {lengths.length ? (
+        <Field label="Length" htmlFor={`len-${b.id}`}>
+          <Select
+            id={`len-${b.id}`}
+            value={b.duration_minutes}
+            disabled={pending}
+            onChange={(e) => run(() => updateBooking(b.id, { minutes: Number(e.target.value) }), undefined, "Length updated")}
+          >
+            {lengths
+              .sort((x, y) => x - y)
+              .map((m) => (
+                <option key={m} value={m}>
+                  {formatDuration(m)}
+                </option>
+              ))}
+          </Select>
+        </Field>
+      ) : null}
+      {handoffs.length ? (
+        <Field label="Getting there" htmlFor={`hand-${b.id}`}>
+          <Select
+            id={`hand-${b.id}`}
+            value={b.handoff ?? ""}
+            disabled={pending}
+            onChange={(e) =>
+              run(() => updateBooking(b.id, { handoff: (e.target.value || null) as Handoff | null }), undefined, "Updated")
+            }
+          >
+            <option value="">Not decided</option>
+            {handoffs.map((h) => (
+              <option key={h} value={h}>
+                {HANDOFF_META[h].team}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
+      {b.handoff === "bring" && service.bring_details ? <p className="text-xs text-ink-600 sm:col-span-2">{service.bring_details}</p> : null}
     </div>
   );
 }

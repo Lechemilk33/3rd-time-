@@ -1,5 +1,5 @@
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
-import { askedEachBooking } from "@/lib/intake";
+import { askedEachBooking, detailsKey, hasDetails } from "@/lib/intake";
 import type { FormAnswers, FormField } from "@/lib/types";
 
 /**
@@ -27,6 +27,18 @@ export function DynamicFormFields({
         const id = `field-${field.id}`;
         const value = answers[field.id];
         const text = typeof value === "string" ? value : "";
+        const saved = answers[detailsKey(field.id)];
+        const notes = hasDetails(field) ? (
+          <Textarea
+            name={`${name}__details`}
+            aria-label={`${field.label} — more details`}
+            defaultValue={typeof saved === "string" ? saved : ""}
+            rows={2}
+            maxLength={2000}
+            placeholder="Tell us more (optional)"
+            className="mt-2"
+          />
+        ) : null;
         const tag =
           serviceNames && field.services?.length ? (
             <span className="ml-2 inline-flex rounded-full bg-sun-100 px-2 py-0.5 align-middle text-[11px] font-extrabold text-ink">
@@ -85,6 +97,7 @@ export function DynamicFormFields({
                 ))}
               </div>
               {field.help ? <p className="mt-1.5 text-sm text-ink-600">{field.help}</p> : null}
+              {notes}
             </fieldset>
           );
         } else {
@@ -118,6 +131,7 @@ export function DynamicFormFields({
               required={field.required}
             >
               {control}
+              {notes}
             </Field>
           );
         }
@@ -168,6 +182,7 @@ export function FormAnswersView({
           );
         }
         const value = answers[field.id];
+        const note = answers[detailsKey(field.id)];
         const display = Array.isArray(value)
           ? value.join(", ")
           : typeof value === "boolean"
@@ -182,6 +197,9 @@ export function FormAnswersView({
               {tag}
             </dt>
             <dd className="mt-0.5 whitespace-pre-wrap text-ink">{display || "—"}</dd>
+            {typeof note === "string" && note.trim() ? (
+              <dd className="mt-1 rounded-xl bg-sea-50 px-3 py-2 text-sm whitespace-pre-wrap text-ink">{note}</dd>
+            ) : null}
           </div>
         );
       })}

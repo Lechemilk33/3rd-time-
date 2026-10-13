@@ -1,6 +1,6 @@
 import { DEFAULT_BOOKING_STEPS } from "@/lib/sections";
 import { DEFAULT_THEME } from "@/lib/theme";
-import type { FormDefinition, Page, Section, Service, SiteSettings } from "@/lib/types";
+import type { DurationOption, FormDefinition, Handoff, Page, Section, Service, SiteSettings } from "@/lib/types";
 
 /**
  * Starter content. The public site shows this until the admin clicks
@@ -453,12 +453,16 @@ const WINDOW_VISIT = {
   end_minute: null,
   min_nights: 1,
   max_nights: 14,
+  duration_options: [] as DurationOption[],
+  handoff_options: [] as Handoff[],
+  pickup_fee_cents: null,
+  bring_details: null,
 } as const;
 
 export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
   {
-    name: "30-Minute Walk",
-    description: "A solid sniff-and-stroll around the neighborhood. Perfect for a midday break.",
+    name: "Dog Walk",
+    description: "A sniff-and-stroll around the neighborhood. Pick 30 minutes for a midday break or a full hour for high-energy pups.",
     price_cents: 2500,
     price_label: "per walk",
     duration_minutes: 30,
@@ -471,28 +475,37 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
     confirmation: "instant",
     max_pets: 3,
     ...WINDOW_VISIT,
+    duration_options: [
+      { minutes: 30, price_cents: 2500 },
+      { minutes: 60, price_cents: 4000 },
+    ],
     position: 0,
   },
   {
-    name: "60-Minute Adventure",
-    description: "A longer outing for high-energy pups, with plenty of time to explore and burn off the zoomies.",
-    price_cents: 4000,
-    price_label: "per walk",
-    duration_minutes: 60,
+    name: "Park Visit",
+    description: "Playtime at a local park. We’ll pick your pup up from home, or you can drop them off with us.",
+    price_cents: null,
+    price_label: "Ask us",
+    duration_minutes: 30,
     image_url: null,
     booking_url: null,
     active: true,
-    allow_online_payment: true,
+    allow_online_payment: false,
     bookable: true,
     audience: "approved",
-    confirmation: "instant",
+    confirmation: "request",
     max_pets: 3,
     ...WINDOW_VISIT,
+    duration_options: [
+      { minutes: 30, price_cents: null },
+      { minutes: 60, price_cents: null },
+    ],
+    handoff_options: ["pickup", "bring"],
     position: 1,
   },
   {
     name: "Drop-In Visit",
-    description: "Potty break, fresh water, meals or meds, and some quality cuddle time.",
+    description: "A quick visit at your home: a potty break, fresh water, meals or meds, and some quality cuddle time.",
     price_cents: 2200,
     price_label: "per visit",
     duration_minutes: 30,
@@ -570,14 +583,16 @@ export const DEFAULT_INTAKE_FORM: FormDefinition = {
         "Eats things off the ground",
         "Scared of loud noises / skateboards",
       ],
+      details: true,
     },
     {
       id: "dog_greetings",
       type: "radio",
-      label: "Is your pup OK saying hi to other dogs?",
-      options: ["Yes, loves it", "Sometimes", "No, please avoid"],
+      label: "Does your pup play well with other dogs?",
+      options: ["Yes, loves other dogs", "Depends on the dog", "No, please keep them apart"],
+      details: true,
     },
-    { id: "treats_ok", type: "yesno", label: "Are treats OK?" },
+    { id: "treats_ok", type: "yesno", label: "Are treats OK?", help: "Mention any allergies or favorites below.", details: true },
     { id: "h-emergency", type: "heading", label: "Just in case" },
     { id: "emergency_contact", type: "text", label: "Emergency contact (name & phone)", required: true },
     {
@@ -585,6 +600,7 @@ export const DEFAULT_INTAKE_FORM: FormDefinition = {
       type: "yesno",
       label: "If your pup needs urgent care and we can’t reach you, may we take them to a vet?",
       required: true,
+      details: true,
     },
     { id: "h-more", type: "heading", label: "A little more" },
     {

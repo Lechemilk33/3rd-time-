@@ -1,11 +1,11 @@
-import { Clock, Moon } from "lucide-react";
+import { Car, Clock, Moon } from "lucide-react";
 import { SectionHeading, SectionShell } from "@/components/sections/shell";
 import { bool, str } from "@/components/sections/helpers";
 import { ButtonLink } from "@/components/ui/button";
 import { PawMark } from "@/components/ui/icons";
 import { Photo } from "@/components/ui/photo";
 import { getServices, getSiteSettings } from "@/lib/content";
-import { priceUnitLabel, serviceTiming } from "@/lib/booking";
+import { hasLengthChoice, priceUnitLabel, servicePrice, serviceTiming } from "@/lib/booking";
 import { formatMoney } from "@/lib/format";
 import type { SectionData } from "@/lib/types";
 import { safeHref } from "@/lib/utils";
@@ -48,11 +48,13 @@ export async function ServicesSection({ data }: { data: SectionData }) {
                   <h3 className="text-xl font-semibold text-ink">{service.name}</h3>
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
                     <span className="font-display text-2xl font-semibold text-ocean">
-                      {service.price_cents == null
-                        ? service.price_label
-                        : service.price_cents === 0
-                          ? "Free"
-                          : formatMoney(service.price_cents)}
+                      {hasLengthChoice(service)
+                        ? servicePrice({ ...service, price_label: null, price_unit: "flat" }) || service.price_label
+                        : service.price_cents == null
+                          ? service.price_label
+                          : service.price_cents === 0
+                            ? "Free"
+                            : formatMoney(service.price_cents)}
                     </span>
                     {service.price_cents ? (
                       <span className="text-sm font-bold text-ink-600">{priceUnitLabel(service)}</span>
@@ -66,6 +68,16 @@ export async function ServicesSection({ data }: { data: SectionData }) {
                         <Clock className="size-4" aria-hidden />
                       )}{" "}
                       {serviceTiming(service)}
+                    </p>
+                  ) : null}
+                  {service.handoff_options.length ? (
+                    <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-ink-600">
+                      <Car className="size-4" aria-hidden />
+                      {service.handoff_options.length > 1
+                        ? "Pick-up or drop-off"
+                        : service.handoff_options[0] === "pickup"
+                          ? "We pick up from home"
+                          : "Drop-off"}
                     </p>
                   ) : null}
                   {service.description ? (

@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { hasLengthChoice, lengthPrice } from "@/lib/booking";
+import { formatDuration } from "@/lib/format";
 import { getOrigin } from "@/lib/origin";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
@@ -24,15 +26,19 @@ export async function startCheckout(formData: FormData) {
     .eq("active", true)
     .maybeSingle<Service>();
 
-  if (!service || !service.allow_online_payment || !service.price_cents) {
+  // Services with a choice of lengths are paid per length (a 60-minute walk costs more).
+  const minutes = service && hasLengthChoice(service) ? Number(formString(formData, "minutes")) : null;
+  const unitAmount = service ? lengthPrice(service, minutes) : null;
+  if (!service || !service.allow_online_payment || !unitAmount) {
     redirect("/portal/payments?error=unavailable");
   }
+  const name = minutes ? `${service.name} (${formatDuration(minutes)})` : service.name;
 
   const origin = await getOrigin();
   const metadata = {
     user_id: user.id,
     service_id: service.id,
-    service_name: service.name.slice(0, 200),
+    service_name: name.slice(0, 200),
     quantity: String(quantity),
   };
 
@@ -45,9 +51,9 @@ export async function startCheckout(formData: FormData) {
         quantity,
         price_data: {
           currency: "usd",
-          unit_amount: service.price_cents,
+          unit_amount: unitAmount,
           product_data: {
-            name: service.name,
+            name,
             ...(service.description ? { description: service.description.slice(0, 500) } : {}),
           },
         },

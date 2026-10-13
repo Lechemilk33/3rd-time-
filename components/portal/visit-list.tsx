@@ -13,6 +13,8 @@ import { Notice } from "@/components/ui/notice";
 import { Textarea } from "@/components/ui/form";
 import {
   dateSpanLabel,
+  HANDOFF_META,
+  hasLengthChoice,
   icsForVisits,
   isMultiDay,
   petNames,
@@ -24,6 +26,7 @@ import {
   type DayAvailability,
 } from "@/lib/booking";
 import { addDays, diffDays, formatYmd, longDate, timeToMinutes, zonedToDate, type Ymd } from "@/lib/dates";
+import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type WalkerInfo = { display_name: string; color: string };
@@ -229,7 +232,14 @@ function VisitCard({
               <span className="sm:hidden">{longDate(v.service_date)} · </span>
             )}
             {visitTimeLabel(v, windowMap, timeZone)}
+            {service && hasLengthChoice(service) && !isMultiDay(v) ? ` · ${formatDuration(v.duration_minutes)}` : ""}
           </p>
+          {v.handoff ? (
+            <p className="mt-0.5 text-sm font-bold text-ink-600">
+              <span aria-hidden>{HANDOFF_META[v.handoff].emoji}</span>{" "}
+              {v.handoff === "pickup" ? "We’ll pick your pup up from home" : `You’re dropping off${service?.bring_details ? ` · ${service.bring_details}` : ""}`}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink-600">
             {v.pets.length ? (
               <span className="inline-flex items-center gap-2">
@@ -339,6 +349,7 @@ function VisitCard({
           ) : kind === "time" && service ? (
             <TimeSlotPicker
               serviceId={service.id}
+              length={v.duration_minutes}
               openDays={new Set((availability ?? []).filter((a) => a.remaining > 0).map((a) => a.service_date))}
               today={today}
               lastDay={addDays(today, maxDaysAhead)}

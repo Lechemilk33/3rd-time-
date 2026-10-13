@@ -25,8 +25,13 @@ import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import {
   estimateTotal,
+  HANDOFF_META,
+  hasLengthChoice,
   icsForVisits,
   KIND_META,
+  lengthOptions,
+  lengthPrice,
+  priceUnitLabel,
   serviceEndMinute,
   servicePrice,
   serviceStartMinute,
@@ -40,9 +45,9 @@ import {
   type DayAvailability,
 } from "@/lib/booking";
 import { addDays, diffDays, isoWeekday, longDate, minuteLabel, shortDate, startOfWeek, zonedToDate, type Ymd } from "@/lib/dates";
-import { formatMoney } from "@/lib/format";
+import { formatDuration, formatMoney } from "@/lib/format";
 import { bookingQuestions, fieldsForService, unansweredForService } from "@/lib/intake";
-import type { ActionResult, FormAnswers, FormField, Service } from "@/lib/types";
+import type { ActionResult, FormAnswers, FormField, Handoff, Service } from "@/lib/types";
 import { useFormAction } from "@/lib/use-form-action";
 import { cn } from "@/lib/utils";
 import { DateWindowPicker } from "./date-window-picker";
@@ -63,6 +68,14 @@ type When = {
 };
 
 const EMPTY: When = { date: null, windowId: null, minute: null, days: [], checkOut: null };
+
+/** What a service starts with: its shortest length, and its only way of getting there if it has just one. */
+function defaultsFor(s: Service | undefined) {
+  return {
+    minutes: s && hasLengthChoice(s) ? lengthOptions(s)[0].minutes : null,
+    handoff: s && s.handoff_options.length === 1 ? s.handoff_options[0] : null,
+  };
+}
 
 export function BookingWizard({
   services,
@@ -104,6 +117,8 @@ export function BookingWizard({
   const [result, setResult] = useState<BookResult | null>(null);
   const [pending, start] = useTransition();
   const [reload, setReload] = useState(0);
+  const [minutes, setMinutes] = useState<number | null>(() => defaultsFor(bookable.find((s) => s.id === serviceId)).minutes);
+  const [handoff, setHandoff] = useState<Handoff | null>(() => defaultsFor(bookable.find((s) => s.id === serviceId)).handoff);
 
   const service = bookable.find((s) => s.id === serviceId) ?? null;
   const kind = service?.kind ?? "window";
@@ -196,8 +211,12 @@ export function BookingWizard({
           ? when.days.length > 0
           : Boolean(when.date && when.checkOut);
   const nights = kind === "stay" && when.date && when.checkOut ? diffDays(when.checkOut, when.date) : 0;
+  const lengths = service && hasLengthChoice(service) ? lengthOptions(service) : [];
+  const handoffs = service?.handoff_options ?? [];
+  const needsHandoff = handoffs.length > 1 && !handoff;
+  const fee = handoff === "pickup" ? (service?.pickup_fee_cents ?? 0) : 0;
   const ready = Boolean(
-    service && !needsQuestions && petIds.length && petIds.length <= service.max_pets && picked && dates.length,
+    service && !needsQuestions && petIds.length && petIds.length <= service.max_pets && picked && dates.length && !needsHandoff,
   );
 
   function pickService(id: string | null) {
@@ -208,6 +227,9 @@ export function BookingWizard({
     // Keep the pups that still fit the new service.
     const next = bookable.find((s) => s.id === id);
     if (next) setPetIds((ids) => ids.slice(0, next.max_pets));
+    const start = defaultsFor(next);
+    setMinutes(start.minutes);
+    setHandoff(start.handoff);
   }
 
   function reset() {
@@ -231,6 +253,8 @@ export function BookingWizard({
           windowId: kind === "window" ? when.windowId : null,
           arrivalMinute: kind === "time" ? when.minute : null,
           endDate: kind === "stay" ? when.checkOut : null,
+          minutes: lengths.length ? minutes : null,
+          handoff,
           note,
         },
         answers,
@@ -250,6 +274,8 @@ export function BookingWizard({
         window={when.windowId ? windowsById.get(when.windowId) : undefined}
         pets={pets.filter((p) => petIds.includes(p.id))}
         timeZone={settings.timezone}
+        minutes={lengths.length ? minutes : null}
+        handoff={handoff}
         onAnother={reset}
       />
     );
@@ -274,10 +300,14 @@ export function BookingWizard({
                 : "Pick a day and time."
             : !dates.length
               ? "None of those dates are open — try other days."
-              : null;
+              : needsHandoff
+                ? "Choose pick-up or drop-off."
+                : null;
 
   let n = 1;
-  const total = service ? estimateTotal(service, { nights, days: dates.length, visits: dates.length }) : null;
+  const unitPrice = service ? lengthPrice(service, minutes) : null;
+  const total = service ? estimateTotal(service, { nights, days: dates.length, visits: dates.length }, { minutes, handoff }) : null;
+  const petLabel = petIds.length === 1 ? (pets.find((p) => p.id === petIds[0])?.name ?? "your pup") : "your pups";
   const whenTitle = kind === "stay" ? "Pick your dates" : kind === "day" ? "Pick your days" : kind === "time" ? "Pick a day and time" : "Pick a day and time";
 
   return (
@@ -390,6 +420,35 @@ export function BookingWizard({
         {/* When */}
         {service && !needsQuestions && petIds.length ? (
           <Step n={n++} title={whenTitle} done={false}>
+            {lengths.length ? (
+              <div className="mb-5">
+                <p className="mb-2 text-sm font-bold">How long?</p>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="How long">
+                  {lengths.map((o) => (
+                    <button
+                      key={o.minutes}
+                      type="button"
+                      role="radio"
+                      aria-checked={minutes === o.minutes}
+                      onClick={() => {
+                        setMinutes(o.minutes);
+                        // A longer appointment may not fit the time already picked.
+                        if (kind === "time") setWhen((w) => ({ ...w, minute: null }));
+                      }}
+                      className={cn(
+                        "min-w-28 rounded-2xl border-2 px-4 py-2.5 text-left transition",
+                        minutes === o.minutes ? "border-ocean bg-sea-50" : "border-ink-100 bg-white hover:border-ink-200",
+                      )}
+                    >
+                      <span className="block font-extrabold">{formatDuration(o.minutes)}</span>
+                      <span className="block text-sm font-bold text-ocean">
+                        {o.price_cents == null ? (service.price_label ?? "Ask us") : o.price_cents === 0 ? "Free" : formatMoney(o.price_cents)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {kind === "window" ? (
               <DateWindowPicker
                 availability={availability ?? []}
@@ -408,6 +467,7 @@ export function BookingWizard({
               <TimeSlotPicker
                 key={reload}
                 serviceId={service.id}
+                length={lengths.length ? minutes : null}
                 openDays={openDays}
                 today={today}
                 lastDay={lastStart}
@@ -446,8 +506,48 @@ export function BookingWizard({
 
         {/* Details (kept mounted while the time is re-picked, so typed answers aren't lost) */}
         {service && !needsQuestions && petIds.length ? (
-          <Step n={n++} title={canRepeat ? "Make it a regular thing?" : "Anything else?"} done={false} hidden={!picked}>
+          <Step
+            n={n++}
+            title={handoffs.length > 1 ? "Pick-up or drop-off?" : canRepeat ? "Make it a regular thing?" : "Anything else?"}
+            done={false}
+            hidden={!picked}
+          >
             <form id={FORM_ID} onSubmit={submit} className="space-y-5">
+              {handoffs.length > 1 ? (
+                <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="How your pup gets to us">
+                  {handoffs.map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      role="radio"
+                      aria-checked={handoff === h}
+                      onClick={() => setHandoff(h)}
+                      className={cn(
+                        "rounded-2xl border-2 p-4 text-left transition",
+                        handoff === h ? "border-ocean bg-sea-50" : "border-ink-100 bg-white hover:border-ink-200",
+                      )}
+                    >
+                      <span className="block font-extrabold">
+                        <span aria-hidden>{HANDOFF_META[h].emoji}</span> {h === "pickup" ? `Pick ${petLabel} up from home` : `I’ll drop ${petLabel} off`}
+                      </span>
+                      <span className="mt-0.5 block text-sm text-ink-600">
+                        {h === "pickup"
+                          ? service.pickup_fee_cents
+                            ? `+${formatMoney(service.pickup_fee_cents)} per ${kind === "stay" ? "stay" : "visit"}`
+                            : "We come to your door."
+                          : service.bring_details || "We’ll confirm where to meet."}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : handoffs.length === 1 ? (
+                <p className="rounded-2xl bg-sea-50 p-4 text-sm font-bold">
+                  <span aria-hidden>{HANDOFF_META[handoffs[0]].emoji}</span>{" "}
+                  {handoffs[0] === "pickup"
+                    ? `We’ll pick ${petLabel} up from home${service.pickup_fee_cents ? ` (+${formatMoney(service.pickup_fee_cents)})` : ""}.`
+                    : `Drop-off: ${service.bring_details || "we’ll confirm where to meet."}`}
+                </p>
+              ) : null}
               {canRepeat ? (
                 <div className="space-y-4">
                   <label className="flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-ink-100 p-4 has-[:checked]:border-ocean has-[:checked]:bg-sea-50">
@@ -559,10 +659,19 @@ export function BookingWizard({
             <Row label={kind === "stay" ? "Dates" : dates.length > 1 ? `${dates.length} ${kind === "day" ? "days" : "visits"}` : "When"}>
               {service && picked ? <WhenSummary service={service} when={when} dates={dates} nights={nights} windowsById={windowsById} /> : <span className="text-ink-400">—</span>}
             </Row>
-            {service?.price_cents != null && picked && dates.length ? (
+            {lengths.length ? <Row label="Length">{minutes ? formatDuration(minutes) : <span className="text-ink-400">—</span>}</Row> : null}
+            {handoffs.length ? (
+              <Row label="Getting there">{handoff ? HANDOFF_META[handoff].label : <span className="text-ink-400">—</span>}</Row>
+            ) : null}
+            {service && picked && dates.length && (unitPrice != null || service.price_label) ? (
               <Row label="Price">
-                {servicePrice(service)}
-                {total != null && total !== service.price_cents ? (
+                {unitPrice == null
+                  ? service.price_label
+                  : unitPrice === 0
+                    ? "Free"
+                    : [formatMoney(unitPrice), priceUnitLabel(service)].filter(Boolean).join(" ")}
+                {fee ? <span className="block font-semibold text-ink-600">+ {formatMoney(fee)} pick-up</span> : null}
+                {total != null && total !== unitPrice ? (
                   <span className="block font-semibold text-ink-600">
                     About {formatMoney(total)} for{" "}
                     {kind === "stay" ? plural(nights, "night") : plural(dates.length, kind === "day" ? "day" : "visit")}
@@ -732,6 +841,8 @@ function BookedCard({
   window: w,
   pets,
   timeZone,
+  minutes,
+  handoff,
   onAnother,
 }: {
   result: BookResult;
@@ -740,6 +851,8 @@ function BookedCard({
   window?: BookingWindow;
   pets: BookingPet[];
   timeZone: string;
+  minutes: number | null;
+  handoff: Handoff | null;
   onAnother: () => void;
 }) {
   const requested = result.status === "requested";
@@ -757,7 +870,7 @@ function BookedCard({
     }
     if (kind === "time" && when.minute != null) {
       const start = zonedToDate(date, when.minute, timeZone);
-      return { start, end: new Date(start.getTime() + (service.duration_minutes ?? 30) * 60_000), description: undefined };
+      return { start, end: new Date(start.getTime() + (minutes ?? service.duration_minutes ?? 30) * 60_000), description: undefined };
     }
     return {
       start: zonedToDate(date, w?.start_minute ?? 540, timeZone),
@@ -819,9 +932,11 @@ function BookedCard({
           </ul>
         ) : null}
         <p className="font-bold">
-          {service.name}
-          {detail ? ` · ${detail}` : ""}
+          {[service.name, detail, minutes ? formatDuration(minutes) : null, handoff ? HANDOFF_META[handoff].label : null]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
+        {handoff === "bring" && service.bring_details ? <p className="text-sm text-ink-600">Drop-off: {service.bring_details}</p> : null}
         {result.skipped?.length ? (
           <Notice tone="warning" className="text-left" title="Some dates were skipped">
             {result.skipped.map((s) => `${shortDate(s.date)} (${SKIP_REASONS[s.reason] ?? s.reason})`).join(" · ")}

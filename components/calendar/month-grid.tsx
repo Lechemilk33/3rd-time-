@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { stackBars } from "@/components/calendar/all-day-lane";
 import { isMovable, tint, useCalendar, walkerColor } from "@/components/calendar/context";
-import { StatusGlyph } from "@/components/calendar/event-bits";
+import { HandoffGlyph, StatusGlyph } from "@/components/calendar/event-bits";
 import { clientName, coversDay, isMultiDay, petNames, stayLength, visitStartMinute, type BookingDetail } from "@/lib/booking";
 import { addDays, daysBetween, diffDays, minuteLabel, shortDate, type Ymd } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -226,6 +226,7 @@ export function MonthGrid({
                         >
                           <span className="size-2 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
                           <StatusGlyph status={b.status} />
+                          <HandoffGlyph handoff={b.handoff} />
                           <span className="hidden shrink-0 font-bold text-ink-600 sm:inline">
                             {minuteLabel(visitStartMinute(b, cal.windows), true)}
                           </span>
@@ -290,6 +291,7 @@ export function MonthGrid({
                         }}
                       >
                         <StatusGlyph status={b.status} />
+                        <HandoffGlyph handoff={b.handoff} />
                         <span aria-hidden>{b.kind === "stay" ? "🌙" : "☀️"}</span>
                         <span className="truncate font-bold">{petNames(b.pets) || clientName(b)}</span>
                         {nights && x.end - x.start >= 2 ? (

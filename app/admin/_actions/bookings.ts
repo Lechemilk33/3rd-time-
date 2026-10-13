@@ -1,12 +1,12 @@
 "use server";
 
 import { refresh } from "next/cache";
-import type { DayAvailability } from "@/lib/booking";
+import { handoffOrNull, lengthOrNull, type DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
 import { bookingQuestions, readAnswers } from "@/lib/intake";
-import type { ActionResult } from "@/lib/types";
+import type { ActionResult, Handoff } from "@/lib/types";
 import { adminClient, clampText } from "./shared";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,6 +35,9 @@ export type CreateBookingsInput = {
   arrivalMinute: number | null;
   /** Overnight stays: check-out date. */
   endDate?: string | null;
+  /** Length, when the service offers a choice (admins may also set any length). */
+  minutes?: number | null;
+  handoff?: Handoff | null;
   walkerId: string | null;
   note: string;
   force: boolean;
@@ -68,6 +71,8 @@ export async function createBookings(input: CreateBookingsInput, answers?: FormD
     p_guest_email: input.clientId ? null : clampText(input.guestEmail, 200).trim() || null,
     p_end_date: input.endDate && isYmd(input.endDate) ? input.endDate : null,
     p_answers: saved,
+    p_duration: lengthOrNull(input.minutes),
+    p_handoff: handoffOrNull(input.handoff),
   });
   if (error) return { ok: false, error: adminError(error, true) };
   refresh();
@@ -146,16 +151,27 @@ export async function cancelBooking(
   return { ok: true, message: n > 1 ? `Canceled ${n} bookings.` : "Canceled." };
 }
 
-/** Walker and visit notes. Times go through moveBooking so emails and capacity stay right. */
+/**
+ * Walker, visit notes, length and how the pup gets to us. Dates and times go through moveBooking so
+ * emails and capacity stay right.
+ */
 export async function updateBooking(
   id: string,
-  patch: { walkerId?: string | null; notes?: string | null },
+  patch: { walkerId?: string | null; notes?: string | null; minutes?: number; handoff?: Handoff | null },
 ): Promise<ActionResult> {
   if (!UUID.test(id)) return { ok: false, error: "Visit not found." };
   const supabase = await adminClient();
   const update: Record<string, unknown> = {};
   if (patch.walkerId !== undefined) update.walker_id = uuidOrNull(patch.walkerId);
   if (patch.notes !== undefined) update.notes = clampText(patch.notes, 2000).trim() || null;
+  if (patch.handoff !== undefined) update.handoff = handoffOrNull(patch.handoff);
+  const minutes = lengthOrNull(patch.minutes);
+  if (minutes != null) {
+    update.duration_minutes = minutes;
+    // Set-time appointments end `minutes` after they start; window visits keep the window's end.
+    const { data: b } = await supabase.from("bookings").select("kind, start_time").eq("id", id).maybeSingle();
+    if (b?.kind === "time") update.end_time = new Date(new Date(b.start_time as string).getTime() + minutes * 60_000).toISOString();
+  }
   const { error } = await supabase.from("bookings").update(update).eq("id", id);
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
@@ -178,10 +194,14 @@ export async function getAdminServiceDays(serviceId: string, from: string, to: s
   return (data ?? []) as DayAvailability[];
 }
 
-export async function getAdminTimeSlots(serviceId: string, date: string): Promise<{ minute: number; window_id: string }[]> {
+export async function getAdminTimeSlots(
+  serviceId: string,
+  date: string,
+  minutes?: number | null,
+): Promise<{ minute: number; window_id: string }[]> {
   if (!UUID.test(serviceId) || !isYmd(date)) return [];
   const supabase = await adminClient();
-  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date });
+  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date, p_duration: lengthOrNull(minutes) });
   return (data ?? []) as { minute: number; window_id: string }[];
 }
 

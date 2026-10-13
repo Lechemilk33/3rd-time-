@@ -18,7 +18,10 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { DynamicFormFields } from "@/components/forms/dynamic-form-fields";
 import {
+  HANDOFF_META,
+  hasLengthChoice,
   KIND_META,
+  lengthOptions,
   serviceEndMinute,
   servicePrice,
   serviceStartMinute,
@@ -44,8 +47,9 @@ import {
   timeToMinutes,
   type Ymd,
 } from "@/lib/dates";
+import { formatDuration, formatMoney } from "@/lib/format";
 import { bookingQuestions } from "@/lib/intake";
-import type { FormField, Service } from "@/lib/types";
+import type { FormField, Handoff, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -81,6 +85,9 @@ export function AdminBookingForm({
       services[0]?.id ??
       "",
   );
+  // Length (when the service offers a choice) and how the pup gets to us (when it asks).
+  const [length, setLength] = useState<number | null>(() => startLength(services.find((s) => s.id === serviceId)));
+  const [handoff, setHandoff] = useState<Handoff | null>(() => startHandoff(services.find((s) => s.id === serviceId)));
   const [date, setDate] = useState<Ymd>(initial.date);
   const [checkOut, setCheckOut] = useState<Ymd>(() => addDays(initial.date, 1));
   const [timeMode, setTimeMode] = useState<"window" | "exact">(initial.minute != null ? "exact" : "window");
@@ -144,12 +151,12 @@ export function AdminBookingForm({
   const dayRows = serviceDays && serviceDays.key === daysKey ? serviceDays.rows : null;
 
   // Open start times for set-time services.
-  const slotsKey = kind === "time" && service && isYmd(date) ? `${service.id}:${date}` : null;
+  const slotsKey = kind === "time" && service && isYmd(date) ? `${service.id}:${date}:${length ?? ""}` : null;
   useEffect(() => {
     if (!slotsKey) return;
-    const [id, d] = slotsKey.split(":");
+    const [id, d, len] = slotsKey.split(":");
     let cancelled = false;
-    getAdminTimeSlots(id, d).then((rows) => {
+    getAdminTimeSlots(id, d, len ? Number(len) : null).then((rows) => {
       if (!cancelled) setSlots({ key: slotsKey, minutes: rows.map((r) => r.minute) });
     });
     return () => {
@@ -191,6 +198,8 @@ export function AdminBookingForm({
     windowId: kind === "window" && timeMode === "window" ? windowId : null,
     arrivalMinute: minute,
     endDate: kind === "stay" ? checkOut : null,
+    minutes: service && hasLengthChoice(service) ? length : null,
+    handoff,
     walkerId: walkerId || null,
     note,
     force: overbook,
@@ -360,7 +369,11 @@ export function AdminBookingForm({
                 key={s.id}
                 type="button"
                 aria-pressed={s.id === serviceId}
-                onClick={() => setServiceId(s.id)}
+                onClick={() => {
+                  setServiceId(s.id);
+                  setLength(startLength(s));
+                  setHandoff(startHandoff(s));
+                }}
                 className={cn(
                   "rounded-2xl border-2 p-3 text-left transition",
                   s.id === serviceId ? "border-ocean bg-sea-50" : "border-ink-100 hover:border-ink-200",
@@ -376,6 +389,51 @@ export function AdminBookingForm({
               </button>
             ))}
           </div>
+          {service && hasLengthChoice(service) ? (
+            <div>
+              <p className="mb-2 text-sm font-bold">How long?</p>
+              <div className="flex flex-wrap gap-2">
+                {lengthOptions(service).map((o) => (
+                  <button
+                    key={o.minutes}
+                    type="button"
+                    aria-pressed={length === o.minutes}
+                    onClick={() => setLength(o.minutes)}
+                    className={cn(
+                      "rounded-full border-2 px-4 py-2 text-sm font-bold transition",
+                      length === o.minutes ? "border-ocean bg-sea-50" : "border-ink-100 hover:border-ink-200",
+                    )}
+                  >
+                    {formatDuration(o.minutes)}
+                    {o.price_cents != null ? <span className="ml-1.5 text-ocean">{o.price_cents ? formatMoney(o.price_cents) : "Free"}</span> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {service?.handoff_options.length ? (
+            <div>
+              <p className="mb-2 text-sm font-bold">Getting there</p>
+              <div className="flex flex-wrap gap-2">
+                {service.handoff_options.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    aria-pressed={handoff === h}
+                    onClick={() => setHandoff(handoff === h && service.handoff_options.length > 1 ? null : h)}
+                    className={cn(
+                      "rounded-full border-2 px-4 py-2 text-sm font-bold transition",
+                      handoff === h ? "border-ocean bg-sea-50" : "border-ink-100 hover:border-ink-200",
+                    )}
+                  >
+                    <span aria-hidden>{HANDOFF_META[h].emoji}</span> {HANDOFF_META[h].team}
+                    {h === "pickup" && service.pickup_fee_cents ? <span className="ml-1.5 text-ocean">+{formatMoney(service.pickup_fee_cents)}</span> : null}
+                  </button>
+                ))}
+              </div>
+              {handoff === "bring" && service.bring_details ? <p className="mt-2 text-sm text-ink-600">{service.bring_details}</p> : null}
+            </div>
+          ) : null}
         </Card>
 
         {/* When */}
@@ -582,6 +640,13 @@ export function AdminBookingForm({
             </SummaryRow>
             <SummaryRow icon={<PawPrint className="size-4" />} label="Service">
               {service?.name ?? "—"}
+              {service && (hasLengthChoice(service) || handoff) ? (
+                <span className="block text-ink-600">
+                  {[hasLengthChoice(service) && length ? formatDuration(length) : null, handoff ? HANDOFF_META[handoff].team : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              ) : null}
             </SummaryRow>
             <SummaryRow icon={kind === "stay" ? <Moon className="size-4" /> : <Clock className="size-4" />} label={dates.length > 1 ? `${dates.length} ${noun}s` : "When"}>
               {kind === "stay" ? (
@@ -736,4 +801,12 @@ function SummaryRow({ icon, label, children }: { icon: ReactNode; label: string;
       </div>
     </div>
   );
+}
+
+function startLength(s: Service | undefined) {
+  return s && hasLengthChoice(s) ? lengthOptions(s)[0].minutes : null;
+}
+
+function startHandoff(s: Service | undefined): Handoff | null {
+  return s && s.handoff_options.length === 1 ? s.handoff_options[0] : null;
 }

@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowUp, ChevronDown, ListChecks, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { createService, deleteService, moveService, saveService } from "@/app/admin/_actions/catalog";
 import { SaveBar } from "@/components/admin/save-bar";
 import { IconButton } from "@/components/admin/schema-form";
@@ -11,10 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
-import { KIND_META, PRICE_UNITS, serviceEndMinute, servicePrice, serviceStartMinute } from "@/lib/booking";
+import { HANDOFF_META, hasLengthChoice, KIND_META, PRICE_UNITS, serviceEndMinute, servicePrice, serviceStartMinute, serviceTiming } from "@/lib/booking";
 import { minuteLabel, minutesToTimeInput, timeToMinutes } from "@/lib/dates";
 import { formatDuration } from "@/lib/format";
-import type { PriceUnit, Service, ServiceKind } from "@/lib/types";
+import type { DurationOption, Handoff, PriceUnit, Service, ServiceKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const KINDS = Object.keys(KIND_META) as ServiceKind[];
@@ -116,7 +116,8 @@ export function ServicesEditor({
 
 function summary(s: Service) {
   const parts = [servicePrice(s)];
-  if (s.kind === "window" || s.kind === "time") parts.push(formatDuration(s.duration_minutes));
+  if (s.kind === "window" || s.kind === "time") parts.push(serviceTiming(s));
+  if (s.handoff_options.length) parts.push(s.handoff_options.map((h) => HANDOFF_META[h].label).join(" or "));
   if (s.kind === "day") parts.push(`${minuteLabel(serviceStartMinute(s))} – ${minuteLabel(serviceEndMinute(s))}`);
   if (s.kind === "stay") {
     parts.push(`check-in ${minuteLabel(serviceStartMinute(s))}, check-out ${minuteLabel(serviceEndMinute(s))}`);
@@ -153,12 +154,14 @@ function ServiceCard({
   onSaved: (service: Service) => void;
 }) {
   const [draft, setDraft] = useState(service);
-  const [price, setPrice] = useState(service.price_cents == null ? "" : String(service.price_cents / 100));
+  const [price, setPrice] = useState(dollars(service.price_cents));
+  const [fee, setFee] = useState(dollars(service.pickup_fee_cents));
+  // Bumped on "Discard changes" so the lengths list (which keeps its own typing) starts over.
+  const [resetKey, setResetKey] = useState(0);
   const [saving, start] = useTransition();
   const [result, setResult] = useState<{ message?: string; error?: string } | null>(null);
 
-  const priceCents = price.trim() === "" ? null : Math.round(Number(price) * 100);
-  const current = { ...draft, price_cents: Number.isFinite(priceCents) ? priceCents : null };
+  const current = { ...draft, price_cents: cents(price), pickup_fee_cents: cents(fee) };
   const dirty = JSON.stringify(current) !== JSON.stringify(service);
   const set = <K extends keyof Service>(key: K, value: Service[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const id = (name: string) => `${name}-${service.id}`;
@@ -231,9 +234,15 @@ function ServiceCard({
               <Input id={id("name")} value={draft.name} onChange={(e) => set("name", e.target.value)} />
             </Field>
             <div className="grid grid-cols-[1fr_1.2fr] gap-3">
-              <Field label="Price ($)" htmlFor={id("price")} help="Blank = not shown, 0 = Free">
-                <Input id={id("price")} type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
-              </Field>
+              {hasLengthChoice(draft) ? (
+                <Field label="Price" htmlFor={id("unit")} help="Set for each length below.">
+                  <p className="flex h-11 items-center font-bold text-ink-600">{servicePrice({ ...draft, price_label: null }) || "—"}</p>
+                </Field>
+              ) : (
+                <Field label="Price ($)" htmlFor={id("price")} help="Blank = not shown, 0 = Free">
+                  <Input id={id("price")} type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
+                </Field>
+              )}
               <Field label="Charged" htmlFor={id("unit")}>
                 <Select id={id("unit")} value={draft.price_unit} onChange={(e) => set("price_unit", e.target.value as PriceUnit)}>
                   {(Object.keys(PRICE_UNITS) as PriceUnit[]).map((u) => (
@@ -282,7 +291,7 @@ function ServiceCard({
             <p className="text-sm text-ink-600">{KIND_META[kind].hint}</p>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {kind === "window" || kind === "time" ? (
+              {(kind === "window" || kind === "time") && !hasLengthChoice(draft) ? (
                 <Field
                   label={kind === "time" ? "Appointment length (min)" : "Visit length (min)"}
                   htmlFor={id("dur")}
@@ -344,6 +353,46 @@ function ServiceCard({
                 </>
               ) : null}
             </div>
+
+            {kind === "window" || kind === "time" ? (
+              <LengthsEditor
+                key={`${service.id}-${resetKey}`}
+                service={draft}
+                basePrice={cents(price)}
+                onChange={(options) => set("duration_options", options)}
+              />
+            ) : null}
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="mb-1 font-display text-lg font-semibold">Getting there</legend>
+            <p className="text-sm text-ink-600">
+              Leave both off when it happens at the client’s home (walks, drop-ins). Tick both and clients choose when they book.
+            </p>
+            <HandoffRow
+              checked={draft.handoff_options.includes("pickup")}
+              onCheck={(on) => set("handoff_options", toggle(draft.handoff_options, "pickup", on))}
+              title="We pick the pup up from home"
+            >
+              <Field label="Pick-up fee ($, optional)" htmlFor={id("fee")} className="max-w-48">
+                <Input id={id("fee")} type="number" min="0" step="0.01" value={fee} placeholder="0" onChange={(e) => setFee(e.target.value)} />
+              </Field>
+            </HandoffRow>
+            <HandoffRow
+              checked={draft.handoff_options.includes("bring")}
+              onCheck={(on) => set("handoff_options", toggle(draft.handoff_options, "bring", on))}
+              title="Clients can drop their pup off"
+            >
+              <Field label="Where and when (shown to clients)" htmlFor={id("bring")}>
+                <Input
+                  id={id("bring")}
+                  value={draft.bring_details ?? ""}
+                  maxLength={300}
+                  placeholder="e.g. Meet us at the Dusty Rhodes Park gate"
+                  onChange={(e) => set("bring_details", e.target.value)}
+                />
+              </Field>
+            </HandoffRow>
           </fieldset>
 
           <div className="space-y-4 rounded-2xl bg-sea-50 p-4">
@@ -420,7 +469,9 @@ function ServiceCard({
               onSave={save}
               onReset={() => {
                 setDraft(service);
-                setPrice(service.price_cents == null ? "" : String(service.price_cents / 100));
+                setPrice(dollars(service.price_cents));
+                setFee(dollars(service.pickup_fee_cents));
+                setResetKey((k) => k + 1);
               }}
               message={result?.message}
               error={result?.error}
@@ -449,5 +500,148 @@ function TimeField({ id, label, value, onChange }: { id: string; label: string; 
         }}
       />
     </Field>
+  );
+}
+
+const dollars = (c: number | null) => (c == null ? "" : String(c / 100));
+
+function cents(text: string): number | null {
+  if (text.trim() === "") return null;
+  const n = Math.round(Number(text) * 100);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toggle(list: Handoff[], item: Handoff, on: boolean): Handoff[] {
+  return on ? (["pickup", "bring"] as Handoff[]).filter((h) => h === item || list.includes(h)) : list.filter((h) => h !== item);
+}
+
+const LENGTHS = [15, 20, 30, 45, 60, 75, 90, 120];
+/** What "Add a length" offers next: the usual walk lengths first. */
+const SUGGESTED = [30, 60, 45, 15, 90, 120, 20, 75];
+
+/**
+ * "Clients choose how long": a list of lengths, each with its own price. Prices are typed as text
+ * (so "25." doesn't snap back to "25") and reported up as cents.
+ */
+function LengthsEditor({
+  service,
+  basePrice,
+  onChange,
+}: {
+  service: Service;
+  basePrice: number | null;
+  onChange: (options: DurationOption[]) => void;
+}) {
+  const [rows, setRows] = useState(() =>
+    hasLengthChoice(service)
+      ? service.duration_options.map((o) => ({ minutes: o.minutes, price: dollars(o.price_cents) }))
+      : [],
+  );
+  const on = rows.length > 1;
+
+  function update(next: { minutes: number; price: string }[]) {
+    setRows(next);
+    onChange(next.length > 1 ? next.map((r) => ({ minutes: r.minutes, price_cents: cents(r.price) })) : []);
+  }
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-ink-100 p-4">
+      <label className="flex items-center gap-2 font-bold">
+        <input
+          type="checkbox"
+          className="size-5 accent-ocean"
+          checked={on}
+          onChange={(e) => {
+            const base = service.duration_minutes ?? 30;
+            update(
+              e.target.checked
+                ? [
+                    { minutes: base, price: dollars(basePrice) },
+                    { minutes: base < 60 ? 60 : base + 30, price: "" },
+                  ]
+                : [],
+            );
+          }}
+        />
+        Clients choose how long
+      </label>
+      {on ? (
+        <>
+          <ul className="space-y-2">
+            {rows.map((r, i) => (
+              <li key={i} className="flex flex-wrap items-end gap-2">
+                <Field label={i === 0 ? "Length" : undefined} htmlFor={`len-${service.id}-${i}`}>
+                  <Select
+                    id={`len-${service.id}-${i}`}
+                    value={r.minutes}
+                    className="w-32"
+                    onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, minutes: Number(e.target.value) } : x)))}
+                  >
+                    {[...new Set([...LENGTHS, r.minutes])].sort((a, b) => a - b).map((m) => (
+                      <option key={m} value={m}>
+                        {formatDuration(m)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={i === 0 ? "Price ($)" : undefined} htmlFor={`lenp-${service.id}-${i}`}>
+                  <Input
+                    id={`lenp-${service.id}-${i}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={r.price}
+                    placeholder="Ask"
+                    className="w-32"
+                    onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)))}
+                  />
+                </Field>
+                <IconButton label="Remove this length" onClick={() => update(rows.filter((_, j) => j !== i))} disabled={rows.length <= 2}>
+                  <X className="size-4" />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+          {new Set(rows.map((r) => r.minutes)).size < rows.length ? (
+            <p className="text-sm font-bold text-coral">Two lengths are the same — only the first is kept.</p>
+          ) : null}
+          {rows.length < 8 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const next = SUGGESTED.find((m) => !rows.some((r) => r.minutes === m)) ?? rows[rows.length - 1].minutes + 15;
+                update([...rows, { minutes: next, price: "" }]);
+              }}
+            >
+              <Plus className="size-4" aria-hidden /> Add a length
+            </Button>
+          ) : null}
+          <p className="text-sm text-ink-600">Clients pick one when they book. Leave a price blank to show “Ask”.</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function HandoffRow({
+  checked,
+  onCheck,
+  title,
+  children,
+}: {
+  checked: boolean;
+  onCheck: (on: boolean) => void;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("rounded-2xl border-2 p-3 transition", checked ? "border-ocean bg-sea-50" : "border-ink-100")}>
+      <label className="flex items-center gap-2 font-bold">
+        <input type="checkbox" className="size-5 accent-ocean" checked={checked} onChange={(e) => onCheck(e.target.checked)} />
+        {title}
+      </label>
+      {checked ? <div className="mt-3">{children}</div> : null}
+    </div>
   );
 }

@@ -1,7 +1,19 @@
 "use server";
 
-import type { ActionResult, FormDefinition, FormField, FormFieldType, GalleryPhoto, PriceUnit, Service, ServiceKind } from "@/lib/types";
+import type {
+  ActionResult,
+  DurationOption,
+  FormDefinition,
+  FormField,
+  FormFieldType,
+  GalleryPhoto,
+  Handoff,
+  PriceUnit,
+  Service,
+  ServiceKind,
+} from "@/lib/types";
 import { serviceEndMinute, serviceStartMinute } from "@/lib/booking";
+import { canHaveDetails } from "@/lib/intake";
 import { MEDIA_BUCKET } from "@/lib/media";
 import { adminClient, clampText, publishContentChange } from "./shared";
 
@@ -26,17 +38,36 @@ function int(value: unknown, min: number, max: number, fallback: number | null):
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+/** Lengths clients pick from, shortest first, one per length. Fewer than two means a fixed length. */
+function cleanLengths(value: unknown): DurationOption[] {
+  if (!Array.isArray(value)) return [];
+  const byMinutes = new Map<number, number | null>();
+  for (const o of value.slice(0, 8)) {
+    const minutes = int(o?.minutes, 5, 720, null);
+    if (minutes != null && !byMinutes.has(minutes)) byMinutes.set(minutes, int(o?.price_cents, 0, 10_000_000, null));
+  }
+  return [...byMinutes].map(([minutes, price_cents]) => ({ minutes, price_cents })).sort((a, b) => a.minutes - b.minutes);
+}
+
 function cleanService(input: ServiceInput): ServiceInput {
   const kind = KINDS.includes(input.kind) ? input.kind : "window";
   const ranged = kind === "day" || kind === "stay";
   const minNights = int(input.min_nights, 1, 60, 1)!;
+  const lengths = ranged ? [] : cleanLengths(input.duration_options);
+  // With a choice of lengths, the service's own length and price are the shortest option's ("From $25").
+  const choose = lengths.length > 1;
+  const handoff = (["pickup", "bring"] as Handoff[]).filter((h) => input.handoff_options?.includes(h));
   return {
     name: clampText(input.name, 80).trim() || "New service",
     description: clampText(input.description, 1000) || null,
-    price_cents: int(input.price_cents, 0, 10_000_000, null),
+    price_cents: choose ? lengths[0].price_cents : int(input.price_cents, 0, 10_000_000, null),
     price_label: clampText(input.price_label, 40).trim() || null,
     price_unit: UNITS.includes(input.price_unit) ? input.price_unit : "visit",
-    duration_minutes: ranged ? null : int(input.duration_minutes, 5, 720, 30),
+    duration_minutes: ranged ? null : choose ? lengths[0].minutes : int(input.duration_minutes, 5, 720, 30),
+    duration_options: choose ? lengths : [],
+    handoff_options: handoff,
+    pickup_fee_cents: handoff.includes("pickup") ? int(input.pickup_fee_cents, 0, 100_000, null) : null,
+    bring_details: handoff.includes("bring") ? clampText(input.bring_details, 300).trim() || null : null,
     image_url: clampText(input.image_url, 1000) || null,
     booking_url: clampText(input.booking_url, 1000) || null,
     active: Boolean(input.active),
@@ -262,6 +293,7 @@ export async function saveForm(input: FormDefinition): Promise<ActionResult> {
       options,
       services: services.length ? services : undefined,
       ask: services.length && f.ask === "each" ? "each" : undefined,
+      details: f.details && canHaveDetails(f.type) ? true : undefined,
     });
   }
 

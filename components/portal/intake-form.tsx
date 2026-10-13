@@ -24,7 +24,7 @@ export function IntakeForm({
   answers: FormAnswers;
   services: Pick<
     Service,
-    "id" | "name" | "description" | "price_cents" | "price_label" | "price_unit" | "duration_minutes" | "kind" | "start_minute" | "end_minute"
+    "id" | "name" | "description" | "price_cents" | "price_label" | "price_unit" | "duration_minutes" | "kind" | "start_minute" | "end_minute" | "duration_options"
   >[];
   selectedServiceIds: string[];
   submitted: boolean;
