@@ -1,4 +1,4 @@
-import { ArrowRight, CircleCheck, Circle, ClipboardList, Gift, Hourglass, PawPrint, Plus, Star, Syringe } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, Gift, Hourglass, PawPrint, Star, Syringe } from "lucide-react";
 import Link from "next/link";
 import { BookingList } from "@/components/portal/booking-list";
 import { ShareLink } from "@/components/portal/share-link";
@@ -7,15 +7,14 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Photo } from "@/components/ui/photo";
 import { requireUser } from "@/lib/auth";
-import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
+import { BOOKING_DETAIL_SELECT, KIND_META, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
-import { getBookingPolicy, getForm, getSiteSettings } from "@/lib/content";
+import { getBookingPolicy, getSiteSettings } from "@/lib/content";
 import { longDate, todayIn, type Ymd } from "@/lib/dates";
-import { asksGeneral, unansweredForService } from "@/lib/intake";
 import { latestUploads, recordsState, shotDate, shotsDue } from "@/lib/records";
 import { siteUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
-import type { FormAnswers, Pet, Service } from "@/lib/types";
+import type { Pet, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default async function PortalHome() {
@@ -24,9 +23,8 @@ export default async function PortalHome() {
   const config = await getBookingConfig(supabase);
   const today = todayIn(config.settings.timezone);
 
-  const [petsRes, intakeRes, bookingsRes, anyBookingRes, servicesRes, form, recordsRes] = await Promise.all([
+  const [petsRes, bookingsRes, anyBookingRes, servicesRes, recordsRes] = await Promise.all([
     supabase.from("pets").select("*").eq("owner_id", user.id).order("created_at"),
-    supabase.from("form_submissions").select("status, answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
     supabase
       .from("bookings")
       .select(BOOKING_DETAIL_SELECT)
@@ -43,7 +41,6 @@ export default async function PortalHome() {
       .order("service_date")
       .limit(200),
     supabase.from("services").select("*").eq("active", true).order("position"),
-    getForm("intake"),
     supabase.from("pet_records").select("pet_id, created_at").eq("owner_id", user.id),
   ]);
   const [policy, settings] = await Promise.all([getBookingPolicy(), getSiteSettings()]);
@@ -55,14 +52,8 @@ export default async function PortalHome() {
   const pets = (petsRes.data ?? []) as Pet[];
   const upcoming = normalizeBookings(bookingsRes.data);
   const services = (servicesRes.data ?? []) as Service[];
-  const answers = (intakeRes.data?.answers as FormAnswers | undefined) ?? {};
-  const myServiceIds = new Set([
-    ...((intakeRes.data?.service_ids as string[] | undefined) ?? []),
-    ...(anyBookingRes.data ?? []).map((b) => b.service_id as string).filter(Boolean),
-  ]);
-  const myServices = services.filter((s) => myServiceIds.has(s.id));
-  const otherServices = services.filter((s) => !myServiceIds.has(s.id));
-  const fields = form?.fields ?? [];
+  // Shortcuts to the services they can book online (not the meet & greet, they've had it).
+  const quickBook = services.filter((s) => s.bookable && s.audience !== "everyone");
   const approved = user.isAdmin || user.profile.booking_approved;
   const meetGreet = services.find((s) => s.audience === "everyone" && s.bookable);
   // Booked their meet & greet but not approved yet: the next step is ours, so say so.
@@ -188,17 +179,18 @@ export default async function PortalHome() {
         <Card>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Your pups</h2>
-            <Link href="/portal/pets/new" className="text-sm font-bold text-ocean hover:underline">
+            <Link href={approved || meetGreetBooking ? "/portal/pets/new" : steps[0].href} className="text-sm font-bold text-ocean hover:underline">
               Add a pup
             </Link>
           </div>
           {pets.length ? (
             <ul className="flex flex-wrap gap-4">
               {pets.map((pet) => {
-                const shots = recordsState(pet, latest.get(pet.id));
+                const state = recordsState(pet, latest.get(pet.id));
+                const shots = state === "checked" && shotsDue(pet, today).length ? "due" : state;
                 return (
                   <li key={pet.id}>
-                    <Link href={`/portal/pets/${pet.id}${shots === "none" ? "#records" : ""}`} className="group block w-28 text-center">
+                    <Link href={`/portal/pets/${pet.id}${shots === "none" || shots === "due" ? "#records" : ""}`} className="group block w-28 text-center">
                       <span className="mx-auto block size-20 overflow-hidden rounded-full border-4 border-sea-100 bg-sea-50 transition group-hover:border-sun">
                         {pet.photo_url ? (
                           <Photo src={pet.photo_url} alt="" className="h-full w-full" />
@@ -210,10 +202,22 @@ export default async function PortalHome() {
                       <span
                         className={cn(
                           "block text-xs font-bold",
-                          shots === "checked" ? "text-emerald-700" : shots === "checking" ? "text-ink-600" : "text-ocean group-hover:underline",
+                          shots === "checked"
+                            ? "text-emerald-700"
+                            : shots === "due"
+                              ? "text-amber-700"
+                              : shots === "checking"
+                                ? "text-ink-600"
+                                : "text-ocean group-hover:underline",
                         )}
                       >
-                        {shots === "checked" ? "Shots on file ✓" : shots === "checking" ? "Checking shots" : "+ Shot records"}
+                        {shots === "checked"
+                          ? "Shots on file ✓"
+                          : shots === "due"
+                            ? "Shots due"
+                            : shots === "checking"
+                              ? "Checking shots"
+                              : "+ Shot records"}
                       </span>
                     </Link>
                   </li>
@@ -226,56 +230,22 @@ export default async function PortalHome() {
         </Card>
       </div>
 
-      {approved && services.length ? (
+      {approved && quickBook.length ? (
         <Card className="mt-6">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold">Your services</h2>
-            <p className="text-sm text-ink-600">Add a service anytime — we’ll ask a couple of questions so your walker is ready.</p>
+          <h2 className="mb-1 text-xl font-semibold">Book again</h2>
+          <p className="mb-4 text-sm text-ink-600">Jump straight to a service.</p>
+          <div className="flex flex-wrap gap-2">
+            {quickBook.map((s) => (
+              <Link
+                key={s.id}
+                href={`/portal/book?service=${s.id}`}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-ink-100 px-4 py-2 font-bold transition hover:border-ocean hover:text-ocean"
+              >
+                <span aria-hidden>{KIND_META[s.kind].emoji}</span> {s.name}
+                <ArrowRight className="size-4 text-ink-400" aria-hidden />
+              </Link>
+            ))}
           </div>
-          {myServices.length ? (
-            <ul className="mb-5 grid gap-3 sm:grid-cols-2">
-              {myServices.map((s) => {
-                const todo = unansweredForService(fields, answers, s.id, asksGeneral(s)).filter((f) => f.required).length;
-                return (
-                  <li key={s.id}>
-                    <Link
-                      href={todo ? `/portal/services/${s.id}` : `/portal/book?service=${s.id}`}
-                      className={cn(
-                        "flex items-center gap-3 rounded-2xl border-2 p-4 transition hover:border-ocean",
-                        todo ? "border-sun-300 bg-sun-100/40" : "border-ink-100",
-                      )}
-                    >
-                      {todo ? (
-                        <ClipboardList className="size-5 shrink-0 text-amber-600" aria-hidden />
-                      ) : (
-                        <CircleCheck className="size-5 shrink-0 text-emerald-600" aria-hidden />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-bold">{s.name}</span>
-                        <span className="text-sm text-ink-600">
-                          {todo ? `${todo} question${todo === 1 ? "" : "s"} to answer` : approved || s.audience === "everyone" ? "Ready to book" : "Unlocks after your meet & greet"}
-                        </span>
-                      </span>
-                      <ArrowRight className="size-4 text-ink-400" aria-hidden />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-          {otherServices.length ? (
-            <div className="flex flex-wrap gap-2">
-              {otherServices.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/portal/services/${s.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-full border-2 border-dashed border-ink-200 px-4 py-2 text-sm font-bold text-ink-600 transition hover:border-ocean hover:text-ocean"
-                >
-                  <Plus className="size-4" aria-hidden /> {s.name}
-                </Link>
-              ))}
-            </div>
-          ) : null}
         </Card>
       ) : null}
 

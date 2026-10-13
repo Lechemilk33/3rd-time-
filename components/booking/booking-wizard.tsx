@@ -522,25 +522,6 @@ export function BookingWizard({
           </Step>
         ) : null}
 
-        {/* Contact and home details we don't have yet (kept mounted, like the details below) */}
-        {service && !needsQuestions && petIds.length && need && anyNeeded(need) ? (
-          <Step
-            n={n++}
-            title={service.audience === "everyone" ? "Where should we meet?" : "Before your first visit"}
-            done={false}
-            hidden={!picked}
-          >
-            <ClientDetailsFields
-              need={need}
-              values={contact}
-              onChange={setContact}
-              formId={FORM_ID}
-              petLabel={petLabel}
-              meetGreet={service.audience === "everyone"}
-            />
-          </Step>
-        ) : null}
-
         {/* Details (kept mounted while the time is re-picked, so typed answers aren't lost) */}
         {service && !needsQuestions && petIds.length ? (
           <Step
@@ -686,6 +667,25 @@ export function BookingWizard({
                 />
               </Field>
             </form>
+          </Step>
+        ) : null}
+
+        {/* Contact and home details we don't have yet, last (what's needed depends on pick-up or drop-off) */}
+        {service && !needsQuestions && petIds.length && need && anyNeeded(need) ? (
+          <Step
+            n={n++}
+            title={service.audience === "everyone" ? "Where should we meet?" : "Before your first visit"}
+            done={false}
+            hidden={!picked || needsHandoff}
+          >
+            <ClientDetailsFields
+              need={need}
+              values={contact}
+              onChange={setContact}
+              formId={FORM_ID}
+              petLabel={petLabel}
+              meetGreet={service.audience === "everyone"}
+            />
           </Step>
         ) : null}
       </div>

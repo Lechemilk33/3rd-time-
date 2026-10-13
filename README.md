@@ -163,7 +163,7 @@ Booking is built in — no third-party scheduler.
   New clients tick “I agree” when they sign up; existing clients are asked once in the portal. Each
   profile records the version and date they agreed to (shown on the client's admin page). Bump
   `TERMS_VERSION` after a meaningful change to ask everyone again.
-- **Booking questions:** in **Admin → Intake & questions** each service has its own tab. A
+- **Booking questions:** in **Admin → Booking questions** each service has its own tab. A
   service’s questions are asked either **once** (the first time the client books it) or **every
   time they book** it (saved on that booking, e.g. “Feeding schedule for this stay”). “Everyone”
   questions come up before a client’s first regular visit, never at sign-up. Clients only answer

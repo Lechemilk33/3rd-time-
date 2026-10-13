@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 const KINDS = Object.keys(KIND_META) as ServiceKind[];
 
-/** Questions tied to each service: asked once on the intake form, or on every booking. */
+/** Questions tied to each service: asked the first time it's booked, or on every booking. */
 export type ServiceQuestionCounts = Record<string, { once: number; each: number }>;
 
 export function ServicesEditor({
@@ -210,8 +210,8 @@ function ServiceCard({
             <span className="flex flex-wrap items-center gap-2">
               <span className="font-bold">{service.name}</span>
               <Badge tone="gray">{KIND_META[service.kind].short}</Badge>
-              {!service.active ? <Badge tone="gray">Hidden</Badge> : null}
-              {service.bookable ? (
+              {!service.active ? <Badge tone="gray">Not offered</Badge> : null}
+              {service.active && service.bookable ? (
                 <Badge tone="sea">{service.confirmation === "request" ? "Book on request" : "Book online"}</Badge>
               ) : null}
               {service.allow_online_payment ? <Badge tone="green">Pay online</Badge> : null}
@@ -447,7 +447,7 @@ function ServiceCard({
                 <p className="text-sm text-ink-600">
                   {questions.once || questions.each
                     ? [
-                        questions.once ? `${questions.once} on the intake form` : null,
+                        questions.once ? `${questions.once} asked the first time` : null,
                         questions.each ? `${questions.each} asked every booking` : null,
                       ]
                         .filter(Boolean)
@@ -468,7 +468,7 @@ function ServiceCard({
           <div className="flex flex-wrap gap-6">
             <label className="flex items-center gap-2 font-bold">
               <input type="checkbox" className="size-5 accent-ocean" checked={draft.active} onChange={(e) => set("active", e.target.checked)} />
-              Show on website
+              Offer this service (website and client portal)
             </label>
             <label className="flex items-center gap-2 font-bold">
               <input

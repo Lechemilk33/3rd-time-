@@ -222,7 +222,7 @@ export default async function AdminHome() {
           {readyToApprove.size ? (
             <Card>
               <Link
-                href={readyToApprove.size === 1 ? `/admin/clients/${[...readyToApprove][0]}` : "/admin/clients?filter=new"}
+                href={readyToApprove.size === 1 ? `/admin/clients/${[...readyToApprove][0]}` : "/admin/clients?filter=met"}
                 className="flex items-center gap-3"
               >
                 <span className="grid size-10 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">

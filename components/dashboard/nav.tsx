@@ -6,6 +6,7 @@ import {
   CalendarPlus,
   ChevronDown,
   ClipboardList,
+  Ellipsis,
   Clock,
   CreditCard,
   House,
@@ -70,7 +71,7 @@ const NAV: Record<"portal" | "admin", NavGroup[]> = {
       items: [
         { href: "/admin/services", label: "Services & prices", icon: Tags },
         { href: "/admin/schedule", label: "Schedule", icon: Clock },
-        { href: "/admin/intake-form", label: "Intake & questions", icon: ClipboardList },
+        { href: "/admin/intake-form", label: "Booking questions", icon: ClipboardList },
       ],
     },
     {
@@ -146,7 +147,14 @@ function CountBadge({ n, active }: { n?: number; active?: boolean }) {
   );
 }
 
-export function SidebarNav({ area, counts }: { area: "portal" | "admin"; counts?: Record<string, number> }) {
+/** The nav for an area, minus links that don't apply to this person (e.g. Payments before there's anything to pay). */
+function groupsFor(area: "portal" | "admin", hidden: string[] = []) {
+  return NAV[area]
+    .map((g) => ({ ...g, items: g.items.filter((i) => !hidden.includes(i.href)) }))
+    .filter((g) => g.items.length);
+}
+
+export function SidebarNav({ area, counts, hidden }: { area: "portal" | "admin"; counts?: Record<string, number>; hidden?: string[] }) {
   const isActive = useIsActive();
   // Server render (and first paint) knows nothing saved, so groups start closed unless you're in them.
   const saved = useSyncExternalStore(subscribeOpen, readOpen, () => "");
@@ -154,7 +162,7 @@ export function SidebarNav({ area, counts }: { area: "portal" | "admin"; counts?
 
   return (
     <nav className="space-y-6" aria-label={area === "admin" ? "Admin" : "Portal"}>
-      {NAV[area].map((group) => {
+      {groupsFor(area, hidden).map((group) => {
         const containsActive = group.items.some((item) => isActive(item.href));
         const remembered = session[group.id] ?? saved.split(",").includes(group.id);
         // A group you're working in stays open; otherwise it's however you left it.
@@ -212,31 +220,73 @@ export function SidebarNav({ area, counts }: { area: "portal" | "admin"; counts?
   );
 }
 
-export function MobileTabs({ area, counts }: { area: "portal" | "admin"; counts?: Record<string, number> }) {
+export function MobileTabs({ area, counts, hidden }: { area: "portal" | "admin"; counts?: Record<string, number>; hidden?: string[] }) {
   const isActive = useIsActive();
-  const items = NAV[area].flatMap((g) => g.items);
+  // Everyday pages as tabs; the rest (setup, website) tucked under "More" so the row stays short.
+  const [main, ...rest] = groupsFor(area, hidden);
+  const more = rest.flatMap((g) => g.items);
+  const current = more.find((i) => isActive(i.href));
+  const tabs = [...(main?.items ?? []), ...(current ? [current] : [])];
+  const moreCount = more.reduce((sum, i) => sum + (counts?.[i.href] ?? 0), 0);
   return (
-    <nav className="-mx-4 overflow-x-auto px-4 pb-3" aria-label={area === "admin" ? "Admin" : "Portal"}>
-      <ul className="flex w-max gap-2">
-        {items.map(({ href, label, icon: Icon }) => (
-          <li key={href}>
-            <Link
-              href={href}
-              aria-current={isActive(href) ? "page" : undefined}
-              ref={isActive(href) ? (el) => el?.scrollIntoView({ block: "nearest", inline: "center" }) : undefined}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold whitespace-nowrap transition",
-                isActive(href) ? "bg-ink text-white" : "bg-sea-50 text-ink-600",
-              )}
-            >
-              <Icon className="size-4" aria-hidden />
-              {label}
-              <CountBadge n={counts?.[href]} active={isActive(href)} />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <div className="-mx-4 flex items-start gap-2 pr-4">
+      <nav className="min-w-0 flex-1 overflow-x-auto pb-3 pl-4" aria-label={area === "admin" ? "Admin" : "Portal"}>
+        <ul className="flex w-max gap-2">
+          {tabs.map(({ href, label, icon: Icon }) => (
+            <li key={href}>
+              <Link
+                href={href}
+                aria-current={isActive(href) ? "page" : undefined}
+                ref={isActive(href) ? (el) => el?.scrollIntoView({ block: "nearest", inline: "center" }) : undefined}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold whitespace-nowrap transition",
+                  isActive(href) ? "bg-ink text-white" : "bg-sea-50 text-ink-600",
+                )}
+              >
+                <Icon className="size-4" aria-hidden />
+                {label}
+                <CountBadge n={counts?.[href]} active={isActive(href)} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      {rest.length ? (
+        <details className="relative shrink-0">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-full bg-sea-50 px-3.5 py-2 text-sm font-bold text-ink-600 [&::-webkit-details-marker]:hidden">
+            <Ellipsis className="size-4" aria-hidden />
+            More
+            <CountBadge n={moreCount} />
+          </summary>
+          <div className="absolute right-0 z-50 mt-2 w-60 space-y-3 rounded-2xl border border-ink-100 bg-white p-3 shadow-xl">
+            {rest.map((group) => (
+              <div key={group.id}>
+                {group.title ? <p className="mb-1 px-2 text-xs font-extrabold tracking-wider text-ink-400 uppercase">{group.title}</p> : null}
+                <ul>
+                  {group.items.map(({ href, label, icon: Icon }) => (
+                    <li key={href}>
+                      <Link
+                        href={href}
+                        aria-current={isActive(href) ? "page" : undefined}
+                        onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")}
+                        className={cn(
+                          "flex items-center gap-2.5 rounded-xl px-2 py-2 text-sm font-bold",
+                          isActive(href) ? "bg-sea-50 text-ocean" : "text-ink-600 hover:bg-sea-50",
+                        )}
+                      >
+                        <Icon className="size-4" aria-hidden />
+                        {label}
+                        <CountBadge n={counts?.[href]} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }
 

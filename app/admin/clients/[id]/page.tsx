@@ -19,15 +19,12 @@ import { getForm } from "@/lib/content";
 import { todayIn } from "@/lib/dates";
 import { formatAge, formatDate, formatMoney } from "@/lib/format";
 import { getPetRecordFiles } from "@/lib/records-server";
-import type { FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
+import type { FormSubmission, Payment, Pet, Profile } from "@/lib/types";
 import { referrerPrefix, sourceLabel } from "@/lib/source";
 import { cn } from "@/lib/utils";
 
-const INTAKE_LABELS: Record<SubmissionStatus, string> = {
-  submitted: "New",
-  reviewed: "Reviewed",
-  approved: "Approved · can book",
-};
+// Reading a client's answers is separate from approving them (that's the switch under Booking).
+const READ_LABELS = { submitted: "New", reviewed: "Read" } as const;
 
 export default async function ClientDetailPage({ params }: PageProps<"/admin/clients/[id]">) {
   const [{ id }, { supabase, admin }] = await Promise.all([params, adminData()]);
@@ -231,32 +228,29 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
               <h2 className="text-xl font-semibold">Their answers</h2>
               {submission ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {(["submitted", "reviewed", "approved"] as SubmissionStatus[]).map((status) => (
-                    <form key={status} action={setSubmissionStatus.bind(null, submission.id, status)}>
-                      <button
-                        type="submit"
-                        aria-pressed={submission.status === status}
-                        title={status === "approved" ? "Also approves them to book every service, and emails them." : undefined}
-                        className={cn(
-                          "rounded-full px-3 py-1.5 text-xs font-bold transition",
-                          submission.status === status ? "bg-ink text-white" : "bg-sea-50 text-ink-600 hover:bg-sea-100",
-                        )}
-                      >
-                        {INTAKE_LABELS[status]}
-                      </button>
-                    </form>
-                  ))}
+                  {(["submitted", "reviewed"] as const).map((status) => {
+                    const on = status === "submitted" ? submission.status === "submitted" : submission.status !== "submitted";
+                    return (
+                      <form key={status} action={setSubmissionStatus.bind(null, submission.id, status)}>
+                        <button
+                          type="submit"
+                          aria-pressed={on}
+                          className={cn(
+                            "rounded-full px-3 py-1.5 text-xs font-bold transition",
+                            on ? "bg-ink text-white" : "bg-sea-50 text-ink-600 hover:bg-sea-100",
+                          )}
+                        >
+                          {READ_LABELS[status]}
+                        </button>
+                      </form>
+                    );
+                  })}
                 </div>
               ) : null}
             </div>
             {submission && form ? (
               <>
-                <p className="mb-4 text-sm text-ink-600">
-                  Last updated {formatDate(submission.updated_at)} ·{" "}
-                  <Badge tone={submission.status === "approved" ? "green" : submission.status === "reviewed" ? "sea" : "sun"}>
-                    {submission.status === "approved" ? "Approved" : INTAKE_LABELS[submission.status]}
-                  </Badge>
-                </p>
+                <p className="mb-4 text-sm text-ink-600">Last updated {formatDate(submission.updated_at)}</p>
                 {submission.service_ids?.length ? (
                   <div className="mb-4 flex flex-wrap items-center gap-1.5">
                     <span className="text-sm font-bold text-ink-600">Interested in:</span>

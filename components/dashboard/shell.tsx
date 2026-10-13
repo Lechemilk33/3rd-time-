@@ -4,6 +4,7 @@ import { MobileTabs, SidebarNav } from "@/components/dashboard/nav";
 import { MobileUserMenu, UserMenu } from "@/components/dashboard/user-menu";
 import { getSiteSettings } from "@/lib/content";
 import { isSupabaseConfigured } from "@/lib/env";
+import { isStripeConfigured } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 
 /** Things waiting on the team, shown as badges in the admin nav. RLS limits these to admins. */
@@ -17,12 +18,28 @@ const adminCounts = cache(async (): Promise<Record<string, number>> => {
   return { "/admin/calendar": requests.count ?? 0, "/admin/messages": messages.count ?? 0 };
 });
 
+/** Portal links that don't apply yet: Payments, until there's a way to pay or a payment to show. */
+const portalHidden = cache(async (): Promise<string[]> => {
+  if (!isSupabaseConfigured() || isStripeConfigured()) return [];
+  const supabase = await createClient();
+  const { count } = await supabase.from("payments").select("id", { count: "exact", head: true });
+  return count ? [] : ["/portal/payments"];
+});
+
 async function Sidebar({ area }: { area: "portal" | "admin" }) {
-  return <SidebarNav area={area} counts={area === "admin" ? await adminCounts() : undefined} />;
+  return area === "admin" ? (
+    <SidebarNav area={area} counts={await adminCounts()} />
+  ) : (
+    <SidebarNav area={area} hidden={await portalHidden()} />
+  );
 }
 
 async function Tabs({ area }: { area: "portal" | "admin" }) {
-  return <MobileTabs area={area} counts={area === "admin" ? await adminCounts() : undefined} />;
+  return area === "admin" ? (
+    <MobileTabs area={area} counts={await adminCounts()} />
+  ) : (
+    <MobileTabs area={area} hidden={await portalHidden()} />
+  );
 }
 
 export async function DashboardShell({ area, children }: { area: "portal" | "admin"; children: ReactNode }) {

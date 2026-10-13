@@ -20,7 +20,7 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
     supabase.from("form_submissions").select("answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
     supabase
       .from("bookings")
-      .select("service_id, service_date, window_id, pets:booking_pets(pet_id)")
+      .select("service_id, service_date, window_id, status, pets:booking_pets(pet_id)")
       .eq("user_id", user.id)
       .in("status", ["requested", "scheduled"])
       .gte("service_date", todayIn("America/Los_Angeles")),
@@ -45,12 +45,25 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
   return (
     <>
       <PageTitle title="Make a booking" description="Pick a service, your pup and a time that works. It only takes a minute." />
-      {meetGreet && config.settings.booking_enabled ? (
-        <Notice tone="success" title={`Your meet & greet is set for ${longDate(meetGreet.service_date as Ymd)} 🎉`} className="mb-6">
-          Once we’ve met your pup, we’ll approve your account and email you — then everything else unlocks.
+      {meetGreet ? (
+        // Their next step is ours: nothing else to book until we've met.
+        <Notice
+          tone="success"
+          title={
+            meetGreet.status === "requested"
+              ? `Your meet & greet is requested for ${longDate(meetGreet.service_date as Ymd)}`
+              : `Your meet & greet is set for ${longDate(meetGreet.service_date as Ymd)} 🎉`
+          }
+        >
+          {meetGreet.status === "requested" ? "We’ll confirm the time by email. " : ""}
+          Once we’ve met your pup, we’ll approve your account and email you. Then you can book walks and everything else.
+          <div className="mt-3">
+            <ButtonLink href="/portal/visits" size="sm" variant="secondary">
+              View my visits
+            </ButtonLink>
+          </div>
         </Notice>
-      ) : null}
-      {!config.settings.booking_enabled && !user.isAdmin ? (
+      ) : !config.settings.booking_enabled && !user.isAdmin ? (
         <Notice tone="warning" title="Online booking is paused right now">
           Send us a message and we’ll get you on the schedule.
           <div className="mt-3">

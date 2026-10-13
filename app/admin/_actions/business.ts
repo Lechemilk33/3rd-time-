@@ -12,14 +12,11 @@ import { adminClient, clampText } from "./shared";
 // Clients
 // ---------------------------------------------------------------------------
 
+/** Marks a client's answers as new or read. Approving them to book is separate (setBookingApproval). */
 export async function setSubmissionStatus(submissionId: string, status: SubmissionStatus): Promise<void> {
-  if (!["submitted", "reviewed", "approved"].includes(status)) return;
+  if (status !== "submitted" && status !== "reviewed") return;
   const supabase = await adminClient();
-  const { data } = await supabase.from("form_submissions").update({ status }).eq("id", submissionId).select("user_id").maybeSingle();
-  // Approving someone's intake also lets them book regular visits (and emails them, via a trigger).
-  if (status === "approved" && data?.user_id) {
-    await supabase.from("profiles").update({ booking_approved: true }).eq("id", data.user_id);
-  }
+  await supabase.from("form_submissions").update({ status }).eq("id", submissionId);
   refresh();
 }
 

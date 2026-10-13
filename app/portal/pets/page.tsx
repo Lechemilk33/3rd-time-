@@ -5,7 +5,9 @@ import { ButtonLink } from "@/components/ui/button";
 import { Photo } from "@/components/ui/photo";
 import { requireUser } from "@/lib/auth";
 import { formatAge } from "@/lib/format";
-import { latestUploads, recordsState } from "@/lib/records";
+import { todayIn } from "@/lib/dates";
+import { BUSINESS_TIMEZONE } from "@/lib/env";
+import { latestUploads, recordsState, shotsDue } from "@/lib/records";
 import { createClient } from "@/lib/supabase/server";
 import type { Pet } from "@/lib/types";
 
@@ -18,6 +20,7 @@ export default async function PetsPage() {
   ]);
   const pets = (data ?? []) as Pet[];
   const latest = latestUploads(recordsRes.data);
+  const today = todayIn(BUSINESS_TIMEZONE);
   const now = new Date();
 
   return (
@@ -59,7 +62,7 @@ export default async function PetsPage() {
                       .filter(Boolean)
                       .join(" · ") || "Tap to add details"}
                   </p>
-                  <ShotsLine state={recordsState(pet, latest.get(pet.id))} />
+                  <ShotsLine state={recordsState(pet, latest.get(pet.id))} due={shotsDue(pet, today).length > 0} />
                 </div>
               </Link>
             </li>
@@ -70,7 +73,8 @@ export default async function PetsPage() {
   );
 }
 
-function ShotsLine({ state }: { state: ReturnType<typeof recordsState> }) {
+function ShotsLine({ state, due }: { state: ReturnType<typeof recordsState>; due: boolean }) {
+  if (state === "checked" && due) return <p className="mt-2 text-sm font-bold text-amber-700">Shots due, add the new record</p>;
   return (
     <p className={state === "checked" ? "mt-2 text-sm font-bold text-emerald-700" : "mt-2 text-sm font-bold text-ink-600"}>
       {state === "checked" ? "Shot records on file ✓" : state === "checking" ? "We’re checking the shot records" : "No shot records yet"}

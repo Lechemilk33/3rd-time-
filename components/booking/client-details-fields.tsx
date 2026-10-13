@@ -76,7 +76,7 @@ export function ClientDetailsFields({
               label="Your address"
               htmlFor="c_address"
               required
-              help={meetGreet ? `Where we’ll meet ${petLabel}.` : "Where we’ll pick up your pup."}
+              help={meetGreet ? `Where we’ll meet ${petLabel}.` : `Where we’ll come for ${petLabel}.`}
               className={cn(!need.phone && "sm:col-span-2")}
             >
               <Input

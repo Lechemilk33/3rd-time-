@@ -396,7 +396,11 @@ export function BookingDrawer({
             ) : null}
             {b.client && !b.client.booking_approved ? (
               <p className="mt-3 rounded-xl bg-sea-50 p-2.5 text-xs font-semibold text-ink-600">
-                New client — not approved for regular visits yet. Approve them on their profile after the meet &amp; greet.
+                New client, not approved for regular visits yet.{" "}
+                <Link href={`/admin/clients/${b.client.id}`} className="font-bold text-ocean hover:underline">
+                  Approve them on their profile
+                </Link>{" "}
+                after the meet &amp; greet.
               </p>
             ) : null}
           </Section>

@@ -6,8 +6,7 @@ import { saveForm } from "@/app/admin/_actions/catalog";
 import { SaveBar } from "@/components/admin/save-bar";
 import { IconButton } from "@/components/admin/schema-form";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Input, Select, Textarea } from "@/components/ui/form";
 import { KIND_META } from "@/lib/booking";
 import { askedEachBooking, canHaveDetails } from "@/lib/intake";
 import type { FormDefinition, FormField, FormFieldType, ServiceKind } from "@/lib/types";
@@ -128,15 +127,6 @@ export function FormBuilder({
 
   return (
     <div className="space-y-6">
-      <Card className="space-y-4">
-        <Field label="Form title" htmlFor="form-title">
-          <Input id="form-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        </Field>
-        <Field label="Intro" htmlFor="form-desc">
-          <Textarea id="form-desc" rows={2} value={form.description ?? ""} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        </Field>
-      </Card>
-
       {/* Tabs */}
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Show questions for">
         {(
@@ -227,7 +217,7 @@ function ServiceTab({
         {once.length ? (
           <ol className="space-y-3">{once.map((f, i) => card(f, once, i))}</ol>
         ) : (
-          <p className="rounded-2xl border-2 border-dashed border-ink-100 p-4 text-sm text-ink-600">No intake questions just for {service.name} yet.</p>
+          <p className="rounded-2xl border-2 border-dashed border-ink-100 p-4 text-sm text-ink-600">No questions just for {service.name} yet.</p>
         )}
         <AddButtons onAdd={(type) => onAdd(type, false, once.map((f) => f.id))} />
       </section>

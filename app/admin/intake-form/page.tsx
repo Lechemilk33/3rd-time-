@@ -14,7 +14,7 @@ export default async function IntakeFormPage({ searchParams }: PageProps<"/admin
   return (
     <>
       <PageTitle
-        title="Intake & booking questions"
+        title="Booking questions"
         description="Questions clients answer while booking: once, the first time they book a service, or every time."
       />
       {seeded ? (
