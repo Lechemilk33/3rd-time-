@@ -761,17 +761,22 @@ function BlockEditor({
   const [days, setDays] = useState<number[]>([]);
   const [copied, setCopied] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
   const conflict = clash(blocks, b);
   const id = `hb-${b.id.slice(0, 8)}`;
 
   useEffect(() => {
+    closeRef.current = onClose;
+  });
+  // Focus once when it opens (it's remounted per block), not on every edit.
+  useEffect(() => {
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   return (
     <div
