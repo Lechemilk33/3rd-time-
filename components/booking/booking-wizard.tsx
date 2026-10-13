@@ -10,6 +10,7 @@ import {
   Lock,
   PawPrint,
   Pencil,
+  Plus,
   Repeat,
   Sparkles,
 } from "lucide-react";
@@ -418,6 +419,12 @@ export function BookingWizard({
                       </button>
                     );
                   })}
+                  <Link
+                    href={`/portal/pets/new?next=${encodeURIComponent(`/portal/book?service=${service.id}`)}`}
+                    className="flex items-center gap-2 rounded-full border-2 border-dashed border-ink-200 px-5 py-1.5 font-bold text-ink-600 transition hover:border-ocean hover:text-ocean"
+                  >
+                    <Plus className="size-5" aria-hidden /> Add another pup
+                  </Link>
                 </div>
                 {service.max_pets < pets.length ? (
                   <p className="mt-3 text-sm text-ink-600">

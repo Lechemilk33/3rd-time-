@@ -92,7 +92,12 @@ export async function savePet(_prev: ActionResult | null, formData: FormData): P
   if (records.length) await supabase.from("pet_records").insert(recordRows(records, savedPet.id, user.id));
   // Added from the booking wizard: go straight back to it.
   const next = formString(formData, "next");
-  redirect(next?.startsWith("/portal/book") ? next : "/portal/pets");
+  const back = next?.startsWith("/portal/book") ? next : null;
+  // "Save & add another pup": a fresh form for the next one, still headed back to booking after.
+  if (!id && formData.get("another") === "1") {
+    redirect(`/portal/pets/new?${new URLSearchParams({ added: savedPet.id, ...(back ? { next: back } : {}) })}`);
+  }
+  redirect(back ?? "/portal/pets");
 }
 
 export async function deletePet(petId: string): Promise<ActionResult> {

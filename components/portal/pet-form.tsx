@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { deletePet, savePet } from "@/app/portal/actions";
 import { ImageUpload } from "@/components/image-upload";
@@ -39,6 +39,7 @@ export function PetForm({
       (pet.sex || pet.spayed_neutered != null || pet.weight_lbs || pet.temperament || pet.walking_notes || pet.feeding_notes ||
         pet.medications || pet.medical_notes || pet.vet_name || pet.vet_phone),
   );
+  const [another, setAnother] = useState(false);
   const [deleting, startDelete] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -146,9 +147,32 @@ export function PetForm({
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       {deleteError ? <Notice tone="error">{deleteError}</Notice> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SubmitButton size="lg" pendingText="Saving…" pending={pending} disabled={uploading || filing}>
-          {uploading ? "Uploading photo…" : filing ? "Uploading records…" : pet ? "Save changes" : next ? "Add pup & pick a time" : "Add pup"}
-        </SubmitButton>
+        <div className="flex flex-wrap items-center gap-3">
+          <SubmitButton
+            size="lg"
+            pendingText="Saving…"
+            pending={pending && !another}
+            disabled={uploading || filing || pending}
+            onClick={() => setAnother(false)}
+          >
+            {uploading ? "Uploading photo…" : filing ? "Uploading records…" : pet ? "Save changes" : next ? "Add pup & pick a time" : "Add pup"}
+          </SubmitButton>
+          {/* Families with a few dogs: save this one and go straight to the next. */}
+          {!pet ? (
+            <SubmitButton
+              name="another"
+              value="1"
+              size="lg"
+              variant="outline"
+              pendingText="Saving…"
+              pending={pending && another}
+              disabled={uploading || filing || pending}
+              onClick={() => setAnother(true)}
+            >
+              <Plus className="size-4" aria-hidden /> Save &amp; add another pup
+            </SubmitButton>
+          ) : null}
+        </div>
         {pet ? (
           <Button
             variant="danger"
