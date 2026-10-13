@@ -4,8 +4,8 @@ Website, client portal and admin portal for **Waiting for Paws**, a dog walking 
 Ocean Beach, San Diego ([@waitingforpaws](https://www.instagram.com/waitingforpaws/)).
 
 - **Public website**: pages are built from sections the owner can add, reorder, hide and edit.
-- **Client portal** (`/portal`): clients sign up, add their pups (with photos), fill out a
-  service-aware intake form, book walks, appointments, full days or overnight stays (one-off or
+- **Client portal** (`/portal`): clients sign up, add their pups (with photos and vaccine
+  records), book a meet & greet, then walks, appointments, full days or overnight stays (one-off or
   weekly), reschedule or cancel, and pay with Stripe.
 - **Admin portal** (`/admin`): a live team calendar (day, week, month and agenda views with hover
   cards and drag-and-drop), booking for any client with search by pup, owner, phone or address,
@@ -92,7 +92,22 @@ Booking is built in — no third-party scheduler.
 - **How clients book:** pick a service, their pup(s), then the dates and times for that type;
   window visits and appointments can repeat weekly. New clients can only book services marked
   “Anyone with an account” (the Meet & Greet); everything else unlocks once an admin approves them
-  (toggle on the client’s profile, or approve their intake form).
+  (toggle on the client’s profile, or approve their answers). The overview lists clients whose
+  meet & greet has happened and are ready to approve.
+- **Onboarding asks only what the next step needs.** Sign-up is name, email and password. New
+  clients see two steps: add their pup (only the name is required) and book the meet & greet,
+  which asks for their phone and address if we don’t have them. The first time they book a visit
+  we make without them, the booking flow asks how to get in, an emergency contact and whether we
+  may take their pup to a vet, and saves them to their profile (`lib/client-details.ts`). Service
+  questions come up the first time that service is booked.
+- **Vaccine records:** clients add a photo or PDF of their pup’s shot records when they add the
+  pup or later (camera on phones, drag and drop on computers). It’s optional and never blocks
+  booking. Files are stored in the private `pet-records` bucket, which only the client and admins
+  can open. On the client’s admin page the team opens the files, enters how long rabies, DHPP and
+  Bordetella are good for, and marks them checked. Clients get one reminder email a few weeks
+  before a checked shot runs out, and see a nudge in the portal. Rabies is required by California
+  law for dogs over 4 months; DHPP and Bordetella are what dog walkers usually ask for, especially
+  for group walks. Approving a client without them is the team’s call.
 - **Hours:** in **Admin → Schedule** each walker draws the hours they work on a weekly calendar
   (drag to add, drag to move or resize, click to edit) and sets how many dogs they can have out at
   once in each block, e.g. 4 for a Saturday park run. A block can be limited to certain services.
@@ -148,11 +163,11 @@ Booking is built in — no third-party scheduler.
   New clients tick “I agree” when they sign up; existing clients are asked once in the portal. Each
   profile records the version and date they agreed to (shown on the client's admin page). Bump
   `TERMS_VERSION` after a meaningful change to ask everyone again.
-- **Intake & booking questions:** one intake form for everyone; in **Admin → Intake & questions**
-  each service has its own tab. A service’s questions are asked either **once** (on the intake
-  form, or the first time the client books it) or **every time they book** it (shown in the
-  booking flow and saved on that booking, e.g. “Feeding schedule for this stay”). Clients only
-  answer what applies to them.
+- **Booking questions:** in **Admin → Intake & questions** each service has its own tab. A
+  service’s questions are asked either **once** (the first time the client books it) or **every
+  time they book** it (saved on that booking, e.g. “Feeding schedule for this stay”). “Everyone”
+  questions come up before a client’s first regular visit, never at sign-up. Clients only answer
+  what applies to them.
 
 ### 5. Stripe (payments)
 
@@ -245,7 +260,9 @@ proxy.ts             refreshes Supabase sessions and guards /portal and /admin
   intake answers, bookings and payments. Only admins can edit site content or see other clients.
   A database trigger stops anyone but an admin from changing a role.
 - Clients can only upload photos into `media/pets/<their user id>/`. Only admins can upload site
-  photos.
+  photos. Vaccine records go in the private `pet-records/<their user id>/` folder, open only to
+  them and admins through links that expire after an hour. Only admins can mark records checked
+  (enforced by a trigger).
 - Clients can’t write bookings directly; every booking change goes through security-definer
   functions that check ownership, approval, notice and cancellation cutoffs, and capacity.
   Approval and intake review status can only be changed by admins (enforced by triggers).

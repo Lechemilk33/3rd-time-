@@ -78,6 +78,18 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
           }}
           initialServiceId={typeof sp.service === "string" ? sp.service : null}
           booked={booked}
+          details={
+            user.isAdmin
+              ? null
+              : {
+                  phone: user.profile.phone,
+                  address: user.profile.address,
+                  access_notes: user.profile.access_notes,
+                  emergency_contact_name: user.profile.emergency_contact_name,
+                  emergency_contact_phone: user.profile.emergency_contact_phone,
+                  vet_care_ok: user.profile.vet_care_ok,
+                }
+          }
         />
       )}
     </>

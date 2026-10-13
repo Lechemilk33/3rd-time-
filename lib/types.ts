@@ -177,6 +177,8 @@ export type Profile = {
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   access_notes: string | null;
+  /** May we take their pup to a vet if we can't reach anyone? Null until asked. */
+  vet_care_ok: boolean | null;
   role: "client" | "admin";
   /** An admin approved this client for regular visits. */
   booking_approved: boolean;
@@ -207,6 +209,12 @@ export type Pet = {
   feeding_notes: string | null;
   vet_name: string | null;
   vet_phone: string | null;
+  /** Vaccine records, as checked by the team (see lib/records.ts). */
+  rabies_until: string | null;
+  distemper_until: string | null;
+  bordetella_until: string | null;
+  records_checked_at: string | null;
+  records_note: string | null;
   created_at: string;
 };
 

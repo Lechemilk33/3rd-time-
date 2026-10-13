@@ -44,13 +44,20 @@ export function visibleFields(fields: FormField[], serviceIds: readonly string[]
 }
 
 /**
- * The questions tied to one service (plus the headings above them): the intake ones by default,
- * or the ones asked on every booking.
+ * The questions for one service (plus the headings above them): the ones asked once by default, or
+ * the ones asked on every booking. With `general`, the "everyone" questions (not tied to a service)
+ * are included too: they're asked once, the first time a client books a regular visit.
  */
-export function fieldsForService(fields: FormField[], serviceId: string, when: "once" | "each" = "once"): FormField[] {
+export function fieldsForService(
+  fields: FormField[],
+  serviceId: string,
+  when: "once" | "each" = "once",
+  general = false,
+): FormField[] {
   const out: FormField[] = [];
   let heading: FormField | null = null;
-  const wanted = (f: FormField) => Boolean(f.services?.includes(serviceId)) && askedEachBooking(f) === (when === "each");
+  const wanted = (f: FormField) =>
+    (f.services?.length ? f.services.includes(serviceId) : general && when === "once") && askedEachBooking(f) === (when === "each");
   for (const f of fields) {
     if (f.type === "heading") {
       heading = wanted(f) ? f : null;
@@ -107,9 +114,12 @@ export function missingRequired(fields: FormField[], answers: FormAnswers, servi
 }
 
 /** Questions for this service the client hasn't answered yet. */
-export function unansweredForService(fields: FormField[], answers: FormAnswers, serviceId: string) {
-  return fieldsForService(fields, serviceId).filter((f) => f.type !== "heading" && !isAnswered(f, answers[f.id]));
+export function unansweredForService(fields: FormField[], answers: FormAnswers, serviceId: string, general = false) {
+  return fieldsForService(fields, serviceId, "once", general).filter((f) => f.type !== "heading" && !isAnswered(f, answers[f.id]));
 }
+
+/** The "everyone" questions are asked before regular visits, not before the meet & greet. */
+export const asksGeneral = (service: { audience: string }) => service.audience !== "everyone";
 
 /**
  * Reads `f_<id>` inputs from a submitted form. Only `required` questions in `checkFields` are

@@ -11,7 +11,7 @@ export default async function ProfilePage() {
         title="Your profile"
         description={
           <>
-            Contact details and home access info.{" "}
+            How we reach you and get in.{" "}
             <Link href="/portal/password" className="font-bold text-ocean hover:underline">
               Change password
             </Link>

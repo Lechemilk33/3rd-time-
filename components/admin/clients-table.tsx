@@ -16,17 +16,19 @@ export type ClientRow = {
   role: "client" | "admin";
   approved: boolean;
   intake: "submitted" | "reviewed" | "approved" | null;
+  /** Has vaccine records the team hasn't checked yet. */
+  records: boolean;
   pets: { name: string; breed: string | null }[];
   joined: string;
 };
 
 const INTAKE: Record<NonNullable<ClientRow["intake"]>, { tone: "sun" | "sea" | "green"; label: string }> = {
-  submitted: { tone: "sun", label: "Intake to review" },
-  reviewed: { tone: "sea", label: "Intake reviewed" },
-  approved: { tone: "green", label: "Intake approved" },
+  submitted: { tone: "sun", label: "Answers to review" },
+  reviewed: { tone: "sea", label: "Answers reviewed" },
+  approved: { tone: "green", label: "Answers approved" },
 };
 
-type Filter = "all" | "review" | "new" | "approved";
+type Filter = "all" | "review" | "records" | "new" | "approved";
 
 export function ClientsTable({ rows, initialFilter = "all" }: { rows: ClientRow[]; initialFilter?: Filter }) {
   const [query, setQuery] = useState("");
@@ -36,6 +38,7 @@ export function ClientsTable({ rows, initialFilter = "all" }: { rows: ClientRow[
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     return rows.filter((r) => {
       if (filter === "review" && r.intake !== "submitted") return false;
+      if (filter === "records" && !r.records) return false;
       if (filter === "new" && (r.approved || r.role === "admin")) return false;
       if (filter === "approved" && !r.approved) return false;
       if (!words.length) return true;
@@ -50,6 +53,7 @@ export function ClientsTable({ rows, initialFilter = "all" }: { rows: ClientRow[
   const counts = {
     all: rows.length,
     review: rows.filter((r) => r.intake === "submitted").length,
+    records: rows.filter((r) => r.records).length,
     new: rows.filter((r) => !r.approved && r.role !== "admin").length,
     approved: rows.filter((r) => r.approved).length,
   };
@@ -72,7 +76,8 @@ export function ClientsTable({ rows, initialFilter = "all" }: { rows: ClientRow[
           {(
             [
               ["all", "Everyone"],
-              ["review", "Intake to review"],
+              ["review", "Answers to review"],
+              ["records", "Records to check"],
               ["new", "Not approved"],
               ["approved", "Approved"],
             ] as [Filter, string][]
@@ -114,7 +119,8 @@ export function ClientsTable({ rows, initialFilter = "all" }: { rows: ClientRow[
                     {p.role === "client" ? (
                       p.approved ? <Badge tone="green">Can book walks</Badge> : <Badge tone="gray">Not approved</Badge>
                     ) : null}
-                    {p.intake ? <Badge tone={INTAKE[p.intake].tone}>{INTAKE[p.intake].label}</Badge> : <Badge tone="gray">No intake</Badge>}
+                    {p.intake ? <Badge tone={INTAKE[p.intake].tone}>{INTAKE[p.intake].label}</Badge> : null}
+                    {p.records ? <Badge tone="sun">Records to check</Badge> : null}
                   </div>
                   <span className="hidden text-sm text-ink-400 md:inline">Joined {p.joined}</span>
                 </Link>

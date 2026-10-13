@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { mergeSettings } from "@/lib/content";
-import { BUILT_IN_PAGES, DEFAULT_INTAKE_FORM, DEFAULT_PAGES, DEFAULT_SERVICES } from "@/lib/defaults";
+import { BUILT_IN_PAGES, DEFAULT_INTAKE_FORM, DEFAULT_INTAKE_SERVICES, DEFAULT_PAGES, DEFAULT_SERVICES } from "@/lib/defaults";
 import { SECTION_TYPE_MAP } from "@/lib/sections";
 import type { ActionResult, Section, SectionData, SiteSettings } from "@/lib/types";
 import { slugify } from "@/lib/utils";
@@ -45,9 +45,17 @@ export async function seedStarterContent(): Promise<ActionResult> {
     if (error) return { ok: false, error: error.message };
   }
 
-  const { error: formError } = await supabase
-    .from("forms")
-    .upsert(DEFAULT_INTAKE_FORM, { onConflict: "slug", ignoreDuplicates: true });
+  // Tie each starter question to its services, so it's asked when one of them is first booked.
+  const { data: serviceRows } = await supabase.from("services").select("id, name");
+  const idsFor = (names: string[] = []) =>
+    (serviceRows ?? []).filter((r) => names.includes(r.name as string)).map((r) => r.id as string);
+  const { error: formError } = await supabase.from("forms").upsert(
+    {
+      ...DEFAULT_INTAKE_FORM,
+      fields: DEFAULT_INTAKE_FORM.fields.map((f) => ({ ...f, services: idsFor(DEFAULT_INTAKE_SERVICES[f.id]) })),
+    },
+    { onConflict: "slug", ignoreDuplicates: true },
+  );
   if (formError) return { ok: false, error: formError.message };
 
   // Writing settings last flips the public site over to the database.

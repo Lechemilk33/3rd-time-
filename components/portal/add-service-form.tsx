@@ -31,7 +31,7 @@ export function AddServiceForm({
       <Card className="mx-auto max-w-xl text-center">
         <CircleCheck className="mx-auto size-12 text-emerald-600" aria-hidden />
         <h2 className="mt-3 font-display text-2xl font-semibold">{state.message}</h2>
-        <p className="mt-1 text-ink-600">We’ve saved your answers to your intake form.</p>
+        <p className="mt-1 text-ink-600">We’ve saved your answers.</p>
         <div className="mt-5 flex flex-wrap justify-center gap-3">
           {canBook ? (
             <ButtonLink href={`/portal/book?service=${service.id}`} className="h-auto min-h-11 py-2 whitespace-normal">

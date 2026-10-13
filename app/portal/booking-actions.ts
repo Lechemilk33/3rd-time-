@@ -4,11 +4,13 @@ import { refresh } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { handoffOrNull, lengthOrNull, type Availability, type DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
+import { anyNeeded, detailsNeeded } from "@/lib/client-details";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
-import { bookingQuestions, fieldsForService, missingMessage, readAnswers, unansweredForService } from "@/lib/intake";
+import { asksGeneral, bookingQuestions, fieldsForService, missingMessage, readAnswers, unansweredForService } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionResult, FormAnswers, Handoff } from "@/lib/types";
+import type { ActionResult, FormAnswers, Handoff, Profile } from "@/lib/types";
+import { formString } from "@/lib/utils";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -99,14 +101,26 @@ export async function bookVisits(input: BookInput, answers?: FormData): Promise<
   const endDate = input.endDate && isYmd(input.endDate) ? input.endDate : null;
   const supabase = await createClient();
 
-  const [form, subRes] = await Promise.all([
+  const [form, subRes, serviceRes] = await Promise.all([
     getForm("intake"),
     supabase.from("form_submissions").select("id, answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
+    supabase.from("services").select("audience").eq("id", input.serviceId).maybeSingle(),
   ]);
   const sub = subRes.data;
 
+  // Contact and home details this booking needs that we don't have yet, saved to their profile.
+  if (!user.isAdmin && serviceRes.data) {
+    const details = readDetails(detailsNeeded(user.profile, serviceRes.data, handoffOrNull(input.handoff)), answers);
+    if (details.missing.length) return { ok: false, error: `Please add ${listWords(details.missing)} so we can take good care of your pup.` };
+    if (Object.keys(details.patch).length) {
+      const { error } = await supabase.from("profiles").update(details.patch).eq("id", user.id);
+      if (error) return { ok: false, error: "Couldn’t save your details. Try again." };
+    }
+  }
+
   // The service's intake questions (asked once) have to be answered before booking it.
-  if (form && unansweredForService(form.fields, (sub?.answers as FormAnswers | undefined) ?? {}, input.serviceId).some((f) => f.required)) {
+  const general = serviceRes.data ? asksGeneral(serviceRes.data) : false;
+  if (form && unansweredForService(form.fields, (sub?.answers as FormAnswers | undefined) ?? {}, input.serviceId, general).some((f) => f.required)) {
     return { ok: false, error: "Please answer the questions for this service first — reload the page to see them." };
   }
 
@@ -144,6 +158,47 @@ export async function bookVisits(input: BookInput, answers?: FormData): Promise<
   refresh();
   const result = data as Required<Pick<BookResult, "status" | "created" | "skipped">>;
   return { ok: true, ...result };
+}
+
+function readDetails(need: ReturnType<typeof detailsNeeded>, form: FormData | undefined) {
+  const patch: Partial<Profile> = {};
+  const missing: string[] = [];
+  if (!anyNeeded(need)) return { patch, missing };
+  const fd = form ?? new FormData();
+  const take = (key: string, max: number) => formString(fd, key)?.slice(0, max) ?? null;
+  if (need.phone) {
+    const phone = take("c_phone", 40);
+    if (phone && phone.replace(/\D/g, "").length >= 7) patch.phone = phone;
+    else missing.push("a phone number");
+  }
+  if (need.address) {
+    const address = take("c_address", 300);
+    if (address) patch.address = address;
+    else missing.push("your address");
+  }
+  if (need.access) {
+    const access = take("c_access", 2000);
+    if (access) patch.access_notes = access;
+    else missing.push("how we get in");
+  }
+  if (need.emergency) {
+    const name = take("c_emergency_name", 120);
+    const phone = take("c_emergency_phone", 40);
+    if (name && phone) {
+      patch.emergency_contact_name = name;
+      patch.emergency_contact_phone = phone;
+    } else missing.push("an emergency contact");
+  }
+  if (need.vet) {
+    const ok = formString(fd, "c_vet");
+    if (ok === "yes" || ok === "no") patch.vet_care_ok = ok === "yes";
+    else missing.push("whether we may take your pup to a vet");
+  }
+  return { patch, missing };
+}
+
+function listWords(items: string[]) {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 
 export async function cancelVisit(id: string, scope: "one" | "following", reason: string): Promise<ActionResult> {
@@ -187,12 +242,12 @@ export async function addService(serviceId: string, _prev: ActionResult | null, 
   const supabase = await createClient();
   const [form, serviceRes, existingRes] = await Promise.all([
     getForm("intake"),
-    supabase.from("services").select("id, name").eq("id", serviceId).eq("active", true).maybeSingle(),
+    supabase.from("services").select("id, name, audience").eq("id", serviceId).eq("active", true).maybeSingle(),
     supabase.from("form_submissions").select("answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
   ]);
   if (!serviceRes.data) return { ok: false, error: "That service isn’t available right now." };
 
-  const fields = form ? fieldsForService(form.fields, serviceId) : [];
+  const fields = form ? fieldsForService(form.fields, serviceId, "once", asksGeneral(serviceRes.data)) : [];
   const { answers, missing } = readAnswers(fields, formData);
   if (missing.length) return { ok: false, error: missingMessage(missing) };
 

@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Field, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { anyNeeded, detailsNeeded, type ClientDetails } from "@/lib/client-details";
 import { TERMS_HREF } from "@/lib/legal";
 import {
   estimateTotal,
@@ -47,10 +48,11 @@ import {
 } from "@/lib/booking";
 import { addDays, diffDays, isoWeekday, longDate, minuteLabel, shortDate, startOfWeek, zonedToDate, type Ymd } from "@/lib/dates";
 import { formatDuration, formatMoney } from "@/lib/format";
-import { bookingQuestions, fieldsForService, unansweredForService } from "@/lib/intake";
+import { asksGeneral, bookingQuestions, fieldsForService, unansweredForService } from "@/lib/intake";
 import type { ActionResult, FormAnswers, FormField, Handoff, Service } from "@/lib/types";
 import { useFormAction } from "@/lib/use-form-action";
 import { cn } from "@/lib/utils";
+import { ClientDetailsFields, detailsGap, EMPTY_DETAILS, type DetailsValues } from "./client-details-fields";
 import { DateWindowPicker } from "./date-window-picker";
 import { DaysPicker, StayPicker, TimeSlotPicker } from "./day-pickers";
 
@@ -88,6 +90,7 @@ export function BookingWizard({
   intake,
   initialServiceId,
   booked,
+  details,
 }: {
   services: Service[];
   pets: BookingPet[];
@@ -99,6 +102,8 @@ export function BookingWizard({
   initialServiceId: string | null;
   /** Upcoming window visits: "date:windowId" -> pet ids, to avoid double-booking a pup. */
   booked: Record<string, string[]>;
+  /** The client's contact and home details, to ask for what a booking needs (null for admins). */
+  details: ClientDetails | null;
 }) {
   const bookable = services.filter((s) => s.bookable);
   const canBook = (s: Service) => approved || s.audience === "everyone";
@@ -120,6 +125,7 @@ export function BookingWizard({
   const [reload, setReload] = useState(0);
   const [minutes, setMinutes] = useState<number | null>(() => defaultsFor(bookable.find((s) => s.id === serviceId)).minutes);
   const [handoff, setHandoff] = useState<Handoff | null>(() => defaultsFor(bookable.find((s) => s.id === serviceId)).handoff);
+  const [contact, setContact] = useState<DetailsValues>(EMPTY_DETAILS);
 
   const service = bookable.find((s) => s.id === serviceId) ?? null;
   const kind = service?.kind ?? "window";
@@ -158,13 +164,14 @@ export function BookingWizard({
   const days = serviceDays && serviceDays.id === rangedId ? serviceDays.rows : null;
 
   // Intake questions for this service the client still needs to answer (asked once).
-  const questions = service ? fieldsForService(intake.fields, service.id) : [];
+  const general = service ? asksGeneral(service) : false;
+  const questions = service ? fieldsForService(intake.fields, service.id, "once", general) : [];
   const needsQuestions =
     Boolean(service) &&
     !answered.has(service!.id) &&
     questions.some((f) => f.type !== "heading") &&
     (!intake.serviceIds.includes(service!.id) ||
-      unansweredForService(intake.fields, intake.answers, service!.id).some((f) => f.required));
+      unansweredForService(intake.fields, intake.answers, service!.id, general).some((f) => f.required));
   // Questions asked on every booking of this service.
   const perBooking = service ? bookingQuestions(intake.fields, service.id) : [];
 
@@ -222,8 +229,11 @@ export function BookingWizard({
   const handoffs = service?.handoff_options ?? [];
   const needsHandoff = handoffs.length > 1 && !handoff;
   const fee = handoff === "pickup" ? (service?.pickup_fee_cents ?? 0) : 0;
+  // Phone, address, how to get in…: only what this booking needs and we don't have yet.
+  const need = details && service ? detailsNeeded(details, service, handoff) : null;
+  const contactGap = need && anyNeeded(need) ? detailsGap(need, contact) : null;
   const ready = Boolean(
-    service && !needsQuestions && petIds.length && petIds.length <= service.max_pets && picked && dates.length && !needsHandoff,
+    service && !needsQuestions && petIds.length && petIds.length <= service.max_pets && picked && dates.length && !needsHandoff && !contactGap,
   );
 
   function pickService(id: string | null) {
@@ -309,7 +319,7 @@ export function BookingWizard({
               ? "None of those dates are open — try other days."
               : needsHandoff
                 ? "Choose pick-up or drop-off."
-                : null;
+                : contactGap;
 
   let n = 1;
   const unitPrice = service ? lengthPrice(service, minutes) : null;
@@ -512,6 +522,25 @@ export function BookingWizard({
           </Step>
         ) : null}
 
+        {/* Contact and home details we don't have yet (kept mounted, like the details below) */}
+        {service && !needsQuestions && petIds.length && need && anyNeeded(need) ? (
+          <Step
+            n={n++}
+            title={service.audience === "everyone" ? "Where should we meet?" : "Before your first visit"}
+            done={false}
+            hidden={!picked}
+          >
+            <ClientDetailsFields
+              need={need}
+              values={contact}
+              onChange={setContact}
+              formId={FORM_ID}
+              petLabel={petLabel}
+              meetGreet={service.audience === "everyone"}
+            />
+          </Step>
+        ) : null}
+
         {/* Details (kept mounted while the time is re-picked, so typed answers aren't lost) */}
         {service && !needsQuestions && petIds.length ? (
           <Step
@@ -647,7 +676,13 @@ export function BookingWizard({
                   value={note}
                   maxLength={1000}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder={kind === "stay" ? "Bedtime routine, favorite toy, who to call…" : "Gate code changed, extra treats, leash is by the door…"}
+                  placeholder={
+                    service.audience === "everyone"
+                      ? "What you’re hoping for (walks, drop-ins…), best days, anything about your pup"
+                      : kind === "stay"
+                        ? "Bedtime routine, favorite toy, who to call…"
+                        : "Gate code changed, extra treats, leash is by the door…"
+                  }
                 />
               </Field>
             </form>
@@ -836,7 +871,7 @@ function ServiceQuestions({
     <form onSubmit={onSubmit} className="space-y-5">
       <p className="flex items-start gap-2 text-ink-600">
         <ClipboardList className="mt-0.5 size-5 shrink-0 text-ocean" aria-hidden />
-        These help us take great care of your pup. We’ll save them to your intake form so you only answer once.
+        These help us take great care of your pup. We’ll remember your answers, so you only answer once.
       </p>
       <DynamicFormFields fields={fields} answers={answers} />
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}

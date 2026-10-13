@@ -198,7 +198,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
             {
               question: "How do I get started?",
               answer:
-                "Create a free client account, add your pup’s details, fill out the intake form, and book a meet & greet. That’s it!",
+                "Create a free account, tell us about your pup and book a free meet & greet. Once we’ve met, you can book walks online. That’s it!",
             },
             {
               question: "What areas do you serve?",
@@ -265,10 +265,9 @@ export const DEFAULT_PAGES: DefaultPage[] = [
           heading: "Getting started is easy",
           intro: "",
           items: [
-            { icon: "🐶", title: "Create your account", body: "Sign up and add your pup’s details in the client portal." },
-            { icon: "📝", title: "Fill out the intake form", body: "Tell us about routines, quirks, and how to get in." },
-            { icon: "👋", title: "Meet & greet", body: "We’ll come say hi so your pup can get to know us." },
-            { icon: "📅", title: "Book walks", body: "Schedule online and pay securely from your portal." },
+            { icon: "🐶", title: "Create your account", body: "Sign up and tell us about your pup. It takes two minutes." },
+            { icon: "👋", title: "Meet & greet", body: "Pick a time and we’ll come say hi so your pup can get to know us." },
+            { icon: "📅", title: "Book walks", body: "Once we’ve met, book online and pay securely from your portal." },
           ],
           background: "sand",
         },
@@ -449,7 +448,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
         visible: true,
         data: {
           heading: "Already a client?",
-          body: "Log in to manage your pups, fill out your intake form, and see upcoming walks.",
+          body: "Log in to book walks, manage your pups and see what’s coming up.",
           buttonLabel: "Client login",
           buttonHref: "/portal",
           secondaryLabel: "",
@@ -630,36 +629,17 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
   },
 ];
 
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
+/**
+ * Questions are asked the first time a client books the service they're about, never at sign-up.
+ * Home access, the emergency contact and vet permission live on the client's profile instead (see
+ * lib/client-details.ts), and how they found us is tracked automatically.
+ */
 export const DEFAULT_INTAKE_FORM: FormDefinition = {
   slug: "intake",
-  title: "New client intake",
-  description:
-    "Help us get to know you and your pup. Only you and the Waiting for Paws team can see your answers.",
+  title: "About your pup",
+  description: "A few quick questions so your walker knows what to expect. Only you and the Waiting for Paws team can see your answers.",
   fields: [
-    { id: "h-home", type: "heading", label: "Your home" },
-    {
-      id: "access_method",
-      type: "radio",
-      label: "How will we get in?",
-      required: true,
-      options: ["Lockbox", "Door code / smart lock", "Key hidden on the property", "Someone will be home", "Other"],
-    },
-    {
-      id: "access_details",
-      type: "textarea",
-      label: "Access details",
-      help: "Lockbox or gate codes, where the key is, alarm instructions, parking tips.",
-    },
-    { id: "h-routine", type: "heading", label: "Your pup’s routine" },
-    { id: "walk_days", type: "checkboxes", label: "Which days do you usually need walks?", options: WEEKDAYS },
-    {
-      id: "walk_times",
-      type: "checkboxes",
-      label: "Preferred time of day",
-      options: ["Morning", "Midday", "Afternoon", "Evening"],
-    },
+    { id: "h-routine", type: "heading", label: "A bit about your pup" },
     { id: "leash_gear", type: "text", label: "What does your pup walk in?", help: "Harness, collar, gentle leader…" },
     {
       id: "behaviors",
@@ -680,31 +660,18 @@ export const DEFAULT_INTAKE_FORM: FormDefinition = {
       type: "radio",
       label: "Does your pup play well with other dogs?",
       options: ["Yes, loves other dogs", "Depends on the dog", "No, please keep them apart"],
+      required: true,
       details: true,
     },
     { id: "treats_ok", type: "yesno", label: "Are treats OK?", help: "Mention any allergies or favorites below.", details: true },
-    { id: "h-emergency", type: "heading", label: "Just in case" },
-    { id: "emergency_contact", type: "text", label: "Emergency contact (name & phone)", required: true },
-    {
-      id: "vet_authorization",
-      type: "yesno",
-      label: "If your pup needs urgent care and we can’t reach you, may we take them to a vet?",
-      required: true,
-      details: true,
-    },
-    { id: "h-more", type: "heading", label: "A little more" },
-    {
-      id: "referral",
-      type: "select",
-      label: "How did you hear about us?",
-      options: ["Instagram", "Friend or neighbor", "Google", "Nextdoor", "Saw you around OB", "Other"],
-    },
-    { id: "anything_else", type: "textarea", label: "Anything else we should know?" },
-    {
-      id: "agreement",
-      type: "agreement",
-      label: "I confirm this information is accurate and I agree to the Waiting for Paws service policies.",
-      required: true,
-    },
   ],
+};
+
+/** Which starter services each starter question is for (matched by name when the content is loaded). */
+export const DEFAULT_INTAKE_SERVICES: Record<string, string[]> = {
+  "h-routine": ["Dog Walk", "Park Visit", "Drop-In Visit"],
+  leash_gear: ["Dog Walk", "Park Visit"],
+  behaviors: ["Dog Walk", "Park Visit"],
+  dog_greetings: ["Dog Walk", "Park Visit"],
+  treats_ok: ["Dog Walk", "Park Visit", "Drop-In Visit"],
 };

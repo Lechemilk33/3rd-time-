@@ -5,14 +5,19 @@ import { ButtonLink } from "@/components/ui/button";
 import { Photo } from "@/components/ui/photo";
 import { requireUser } from "@/lib/auth";
 import { formatAge } from "@/lib/format";
+import { latestUploads, recordsState } from "@/lib/records";
 import { createClient } from "@/lib/supabase/server";
 import type { Pet } from "@/lib/types";
 
 export default async function PetsPage() {
   const user = await requireUser();
   const supabase = await createClient();
-  const { data } = await supabase.from("pets").select("*").eq("owner_id", user.id).order("created_at");
+  const [{ data }, recordsRes] = await Promise.all([
+    supabase.from("pets").select("*").eq("owner_id", user.id).order("created_at"),
+    supabase.from("pet_records").select("pet_id, created_at").eq("owner_id", user.id),
+  ]);
   const pets = (data ?? []) as Pet[];
+  const latest = latestUploads(recordsRes.data);
   const now = new Date();
 
   return (
@@ -54,6 +59,7 @@ export default async function PetsPage() {
                       .filter(Boolean)
                       .join(" · ") || "Tap to add details"}
                   </p>
+                  <ShotsLine state={recordsState(pet, latest.get(pet.id))} />
                 </div>
               </Link>
             </li>
@@ -61,5 +67,13 @@ export default async function PetsPage() {
         </ul>
       )}
     </>
+  );
+}
+
+function ShotsLine({ state }: { state: ReturnType<typeof recordsState> }) {
+  return (
+    <p className={state === "checked" ? "mt-2 text-sm font-bold text-emerald-700" : "mt-2 text-sm font-bold text-ink-600"}>
+      {state === "checked" ? "Shot records on file ✓" : state === "checking" ? "We’re checking the shot records" : "No shot records yet"}
+    </p>
   );
 }

@@ -4,15 +4,21 @@ import { ClientsTable, type ClientRow } from "@/components/admin/clients-table";
 import { EmptyState, PageTitle } from "@/components/dashboard/shell";
 import { ButtonLink } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
+import { latestUploads, recordsState } from "@/lib/records";
 import type { Profile, SubmissionStatus } from "@/lib/types";
 
 export default async function ClientsPage({ searchParams }: PageProps<"/admin/clients">) {
   const [{ supabase }, sp] = await Promise.all([adminData(), searchParams]);
-  const [profilesRes, petsRes, intakeRes] = await Promise.all([
+  const [profilesRes, petsRes, intakeRes, uploadsRes] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-    supabase.from("pets").select("owner_id, name, breed"),
+    supabase.from("pets").select("id, owner_id, name, breed, records_checked_at, rabies_until, distemper_until, bordetella_until"),
     supabase.from("form_submissions").select("user_id, status").eq("form_slug", "intake"),
+    supabase.from("pet_records").select("pet_id, created_at"),
   ]);
+  const latest = latestUploads(uploadsRes.data);
+  const recordsToCheck = new Set(
+    (petsRes.data ?? []).filter((p) => recordsState(p, latest.get(p.id)) === "checking").map((p) => p.owner_id as string),
+  );
   const profiles = (profilesRes.data ?? []) as Profile[];
   const petsByOwner = new Map<string, { name: string; breed: string | null }[]>();
   for (const p of petsRes.data ?? []) {
@@ -29,6 +35,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
     role: p.role,
     approved: p.booking_approved,
     intake: intakeByUser.get(p.id) ?? null,
+    records: recordsToCheck.has(p.id),
     pets: petsByOwner.get(p.id) ?? [],
     joined: formatDate(p.created_at),
   }));
@@ -45,7 +52,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
           When people sign up from your website they’ll show up here.
         </EmptyState>
       ) : (
-        <ClientsTable rows={rows} initialFilter={sp.filter === "review" ? "review" : "all"} />
+        <ClientsTable rows={rows} initialFilter={sp.filter === "review" || sp.filter === "records" || sp.filter === "new" ? sp.filter : "all"} />
       )}
     </>
   );

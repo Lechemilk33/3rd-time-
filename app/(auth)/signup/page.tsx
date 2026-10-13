@@ -12,7 +12,7 @@ export default function SignupPage() {
     <>
       <h1 className="text-3xl font-semibold text-ink">Join the pack 🐶</h1>
       <p className="mt-2 mb-8 text-ink-600">
-        Create a free account to add your pup, fill out the intake form, and book walks.
+        Create a free account, tell us about your pup and book a free meet &amp; greet. It takes about two minutes.
       </p>
       {configured ? null : <SetupNotice />}
       <Suspense fallback={<AuthFormSkeleton />}>

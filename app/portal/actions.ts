@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { refresh } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { getForm } from "@/lib/content";
 import { createClient } from "@/lib/supabase/server";
-import { askedEachBooking, missingMessage, readAnswers, visibleFields } from "@/lib/intake";
 import { TERMS_VERSION } from "@/lib/legal";
-import type { ActionResult, FormAnswers } from "@/lib/types";
+import { RECORDS_BUCKET, type StagedRecord } from "@/lib/records";
+import { readStagedRecords, recordRows } from "@/lib/records-server";
+import type { ActionResult } from "@/lib/types";
 import { formString } from "@/lib/utils";
 
 export async function updateProfile(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -25,6 +25,7 @@ export async function updateProfile(_prev: ActionResult | null, formData: FormDa
       emergency_contact_name: formString(formData, "emergency_contact_name"),
       emergency_contact_phone: formString(formData, "emergency_contact_phone"),
       access_notes: formString(formData, "access_notes"),
+      vet_care_ok: parseBool(formString(formData, "vet_care_ok")),
     })
     .eq("id", user.id);
 
@@ -81,11 +82,14 @@ export async function savePet(_prev: ActionResult | null, formData: FormData): P
   };
 
   const supabase = await createClient();
-  const { error } = id
-    ? await supabase.from("pets").update(pet).eq("id", id).eq("owner_id", user.id)
-    : await supabase.from("pets").insert({ ...pet, owner_id: user.id });
+  const { data: savedPet, error } = id
+    ? await supabase.from("pets").update(pet).eq("id", id).eq("owner_id", user.id).select("id").single()
+    : await supabase.from("pets").insert({ ...pet, owner_id: user.id }).select("id").single();
 
   if (error) return { ok: false, error: error.message };
+  // Vaccine records added while creating the pup.
+  const records = readStagedRecords(formData.get("records"), user.id);
+  if (records.length) await supabase.from("pet_records").insert(recordRows(records, savedPet.id, user.id));
   // Added from the booking wizard: go straight back to it.
   const next = formString(formData, "next");
   redirect(next?.startsWith("/portal/book") ? next : "/portal/pets");
@@ -94,39 +98,34 @@ export async function savePet(_prev: ActionResult | null, formData: FormData): P
 export async function deletePet(petId: string): Promise<ActionResult> {
   const user = await requireUser();
   const supabase = await createClient();
+  // Their vaccine records go with them.
+  const { data: files } = await supabase.from("pet_records").select("path").eq("pet_id", petId).eq("owner_id", user.id);
+  if (files?.length) await supabase.storage.from(RECORDS_BUCKET).remove(files.map((f) => f.path as string));
   const { error } = await supabase.from("pets").delete().eq("id", petId).eq("owner_id", user.id);
   if (error) return { ok: false, error: error.message };
   redirect("/portal/pets");
 }
 
-export async function submitIntake(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+/** Vaccine records uploaded from the pup's page, saved right away. */
+export async function addPetRecords(petId: string, files: StagedRecord[]): Promise<ActionResult> {
   const user = await requireUser();
-  const form = await getForm("intake");
-  if (!form) return { ok: false, error: "The intake form isn’t available right now." };
-
+  const list = readStagedRecords(files, user.id);
+  if (!list.length) return { ok: false, error: "Nothing to add." };
   const supabase = await createClient();
-  const [servicesRes, existingRes] = await Promise.all([
-    supabase.from("services").select("id").eq("active", true),
-    supabase.from("form_submissions").select("answers").eq("form_slug", form.slug).eq("user_id", user.id).maybeSingle(),
-  ]);
-  const valid = new Set((servicesRes.data ?? []).map((s) => s.id as string));
-  const serviceIds = [...new Set(formData.getAll("service_ids").map(String))].filter((id) => valid.has(id));
-
-  // Only questions for the services they picked are required.
-  const intakeFields = form.fields.filter((f) => !askedEachBooking(f));
-  const { answers, missing } = readAnswers(intakeFields, formData, visibleFields(form.fields, serviceIds));
-  if (missing.length) return { ok: false, error: missingMessage(missing) };
-
-  const { error } = await supabase.from("form_submissions").upsert(
-    {
-      form_slug: form.slug,
-      user_id: user.id,
-      answers: { ...((existingRes.data?.answers as FormAnswers | undefined) ?? {}), ...answers },
-      service_ids: serviceIds,
-    },
-    { onConflict: "form_slug,user_id" },
-  );
-  if (error) return { ok: false, error: error.message };
+  const { error } = await supabase.from("pet_records").insert(recordRows(list, petId, user.id));
+  if (error) return { ok: false, error: "Couldn’t save that file. Try again." };
   refresh();
-  return { ok: true, message: "Thanks! Your intake form is in. We’ll review it before your meet & greet. 🐾" };
+  return { ok: true };
+}
+
+export async function removePetRecord(recordId: string): Promise<ActionResult> {
+  await requireUser();
+  const supabase = await createClient();
+  const { data: file } = await supabase.from("pet_records").select("id, path").eq("id", recordId).maybeSingle();
+  if (!file) return { ok: false, error: "That file is already gone." };
+  await supabase.storage.from(RECORDS_BUCKET).remove([file.path as string]);
+  const { error } = await supabase.from("pet_records").delete().eq("id", file.id);
+  if (error) return { ok: false, error: "Couldn’t remove that file." };
+  refresh();
+  return { ok: true };
 }

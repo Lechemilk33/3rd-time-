@@ -6,7 +6,7 @@ import { AddServiceForm } from "@/components/portal/add-service-form";
 import { requireUser } from "@/lib/auth";
 import { getForm } from "@/lib/content";
 import { servicePrice, serviceTiming } from "@/lib/booking";
-import { fieldsForService } from "@/lib/intake";
+import { asksGeneral, fieldsForService } from "@/lib/intake";
 import { createClient } from "@/lib/supabase/server";
 import type { FormAnswers, Service } from "@/lib/types";
 
@@ -22,7 +22,7 @@ export default async function AddServicePage({ params }: PageProps<"/portal/serv
   const service = serviceRes.data;
   if (!service) notFound();
 
-  const fields = form ? fieldsForService(form.fields, service.id) : [];
+  const fields = form ? fieldsForService(form.fields, service.id, "once", asksGeneral(service)) : [];
   const already = ((submissionRes.data?.service_ids as string[] | undefined) ?? []).includes(service.id);
   const canBook = service.bookable && (user.isAdmin || user.profile.booking_approved || service.audience === "everyone");
 

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { setSubmissionStatus } from "@/app/admin/_actions/business";
 import { adminData } from "@/app/admin/_lib";
 import { ApprovalToggle, ClientNotesForm, RoleToggle } from "@/components/admin/client-tools";
+import { PetRecordsReview } from "@/components/admin/pet-records-review";
 import { PageTitle } from "@/components/dashboard/shell";
 import { FormAnswersView } from "@/components/forms/dynamic-form-fields";
 import { BookingList } from "@/components/portal/booking-list";
@@ -15,7 +16,9 @@ import { Photo } from "@/components/ui/photo";
 import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
+import { todayIn } from "@/lib/dates";
 import { formatAge, formatDate, formatMoney } from "@/lib/format";
+import { getPetRecordFiles } from "@/lib/records-server";
 import type { FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
 import { referrerPrefix, sourceLabel } from "@/lib/source";
 import { cn } from "@/lib/utils";
@@ -54,6 +57,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
         .maybeSingle()
     : { data: null };
   const pets = (petsRes.data ?? []) as Pet[];
+  const records = await getPetRecordFiles(supabase, pets.map((p) => p.id));
+  const today = todayIn(config.settings.timezone);
+  const noRabies = pets.filter((p) => !p.rabies_until || p.rabies_until < today);
   const submission = submissionRes.data;
   const payments = (paymentsRes.data ?? []) as Payment[];
   const now = new Date();
@@ -96,6 +102,12 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                 <span className="font-bold">Emergency:</span> {profile.emergency_contact_name} {profile.emergency_contact_phone}
               </p>
             ) : null}
+            {profile.vet_care_ok != null ? (
+              <p className="mt-1 text-sm">
+                <span className="font-bold">Vet if we can’t reach anyone:</span>{" "}
+                {profile.vet_care_ok ? "Yes, go ahead" : "No, keep trying them"}
+              </p>
+            ) : null}
             {profile.access_notes ? (
               <div className="mt-4 rounded-2xl bg-sun-100 p-3 text-sm">
                 <p className="font-bold">Home access</p>
@@ -108,6 +120,12 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
             <Card>
               <h2 className="mb-3 text-xl font-semibold">Booking</h2>
               <ApprovalToggle userId={profile.id} approved={profile.booking_approved} />
+              {!profile.booking_approved && pets.length && noRabies.length ? (
+                <p className="mt-3 rounded-2xl bg-sun-100/70 p-3 text-sm">
+                  No current rabies record checked for {noRabies.map((p) => p.name).join(" & ")} yet. California requires it for dogs over 4
+                  months. It’s your call whether to approve without it.
+                </p>
+              ) : null}
               <p className="mt-4 border-t border-ink-100 pt-3 text-sm text-ink-600">
                 Found us:{" "}
                 {referrer ? (
@@ -201,6 +219,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                       <PetDetail label="Medical / allergies" value={pet.medical_notes} />
                       <PetDetail label="Vet" value={[pet.vet_name, pet.vet_phone].filter(Boolean).join(" · ")} />
                     </dl>
+                    <PetRecordsReview pet={pet} files={records.get(pet.id) ?? []} today={today} />
                   </li>
                 ))}
               </ul>
@@ -209,7 +228,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
 
           <Card>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold">Intake form</h2>
+              <h2 className="text-xl font-semibold">Their answers</h2>
               {submission ? (
                 <div className="flex flex-wrap gap-1.5">
                   {(["submitted", "reviewed", "approved"] as SubmissionStatus[]).map((status) => (
@@ -256,7 +275,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                 />
               </>
             ) : (
-              <p className="text-ink-600">Not submitted yet.</p>
+              <p className="text-ink-600">Nothing yet. Questions are asked the first time they book a service.</p>
             )}
           </Card>
         </div>

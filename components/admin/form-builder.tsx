@@ -167,15 +167,15 @@ export function FormBuilder({
       {tab === "all" ? (
         <>
           <p className="text-sm text-ink-600">
-            Every question in one list. Tie a question to services to ask only those clients — and choose whether it’s asked once on
-            the intake form or every time they book.
+            Every question in one list. Nothing is asked at sign-up: questions are asked the first time a client books the service
+            they’re for (or every time, if you choose). “Everyone” questions come up before a client’s first regular visit.
           </p>
           <ol className="space-y-3">{fields.map((f, i) => card(f, fields, i))}</ol>
           <AddButtons onAdd={(type) => add({ type, label: "", required: false }, fields.map((f) => f.id))} />
         </>
       ) : tab === "everyone" ? (
         <>
-          <p className="text-sm text-ink-600">Asked on the intake form, whatever services the client picks.</p>
+          <p className="text-sm text-ink-600">Asked once, the first time a client books a regular visit (not the meet & greet).</p>
           <ol className="space-y-3">{everyone.map((f, i) => card(f, everyone, i))}</ol>
           <AddButtons onAdd={(type) => add({ type, label: "", required: false }, everyone.map((f) => f.id))} />
         </>
@@ -218,7 +218,7 @@ function ServiceTab({
             <ClipboardList className="size-5" aria-hidden />
           </span>
           <div>
-            <h2 className="text-xl font-semibold">Once, on the intake form</h2>
+            <h2 className="text-xl font-semibold">Once, the first time they book it</h2>
             <p className="text-sm text-ink-600">
               Asked when a client signs up for {service.name}, or the first time they book it. Saved to their profile.
             </p>
@@ -419,7 +419,7 @@ function AskFor({
               onClick={() => onAsk(a)}
               className={cn(chip, ask === a ? "border-ink bg-ink text-white" : "border-ink-100 bg-white text-ink-600 hover:border-ink-200")}
             >
-              {a === "once" ? "Once, on the intake form" : "Every time they book"}
+              {a === "once" ? "Once, the first time" : "Every time they book"}
             </button>
           ))}
         </div>

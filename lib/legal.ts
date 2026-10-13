@@ -48,14 +48,14 @@ If a visit didn’t happen because of us, or something wasn’t right, tell us w
 ## 7. Your pup’s health and behavior
 By booking, you confirm that your pup:
 
-- is up to date on the vaccines required by law (including rabies) and licensed where required, and you’ll show proof if we ask;
+- is up to date on the vaccines required by law (including rabies) and licensed where required, and you’ll share proof when we ask (a photo of the vet record in your client portal is perfect);
 - is healthy enough for the visit you booked, and on flea and tick prevention;
 - has no history of biting or serious aggression toward people or other dogs that you haven’t told us about.
 
 Tell us about any change in health or behavior before the next visit. If a pup shows aggressive or unsafe behavior, we may end the visit, keep them out of group walks, or stop service.
 
 ## 8. Emergencies and vet care
-If your pup is hurt or becomes ill while in our care, we’ll try to reach you and your emergency contact right away. If we can’t reach anyone and you’ve told us we may (on your intake form), we’ll take your pup to your vet or the nearest emergency vet. You authorize that care and agree to pay the vet and related costs. We’ll always act in good faith in your pup’s best interest.
+If your pup is hurt or becomes ill while in our care, we’ll try to reach you and your emergency contact right away. If we can’t reach anyone and you’ve told us we may (we ask before your first visit), we’ll take your pup to your vet or the nearest emergency vet. You authorize that care and agree to pay the vet and related costs. We’ll always act in good faith in your pup’s best interest.
 
 ## 9. Your home and keys
 - If you give us keys, a lockbox or a door code, we’ll keep them secure and use them only for your visits.
@@ -90,10 +90,10 @@ export const PRIVACY_TEXT = `This policy explains what information {business} co
 
 ## What we collect
 - Account details: your name, email, phone number and address.
-- Your pup’s details: name, breed, age, photos, health and medication notes, vet information, behavior and routines.
+- Your pup’s details: name, breed, age, photos, health and medication notes, vaccine records you add, vet information, behavior and routines.
 - Home access: entry instructions, lockbox or door codes and anything else you tell us so we can get in safely.
 - Emergency contacts you give us.
-- Your bookings, payment history, intake form answers and the messages you send us.
+- Your bookings, payment history, answers to our booking questions and the messages you send us.
 - Payment details are collected and processed by Stripe. We receive a record of each payment (amount, date and status), never your full card number.
 - Basic technical information our hosting providers log automatically, like your browser type and IP address, to keep the site secure.
 
@@ -119,7 +119,7 @@ We may also share information with a veterinarian in an emergency, with your eme
 We use a small number of essential cookies to keep you logged in and keep the site secure. To see which pages are useful, we count visits with Vercel Web Analytics, which doesn’t use cookies and doesn’t identify you. When you first visit, your browser also remembers how you found us (for example a flyer or a Google search); if you create an account, that’s saved with it so we know which of our efforts are working. We don’t use advertising or cross-site tracking, so there’s nothing to turn off, and we treat “Do Not Track” browser signals the same way.
 
 ## How we protect it
-Your information is stored with reputable providers and sent over encrypted connections, and only our team can see client and pup details. Home access information is used only for your visits.
+Your information is stored with reputable providers and sent over encrypted connections, and only our team can see client and pup details. Vaccine records are kept in private storage that only you and our team can open. Home access information is used only for your visits.
 
 ## How long we keep it
 We keep your information while you have an account with us. After that we keep only what we need for records the law requires, like payments, and remove the rest when you ask.

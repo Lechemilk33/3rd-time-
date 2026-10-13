@@ -15,7 +15,7 @@ export default async function IntakeFormPage({ searchParams }: PageProps<"/admin
     <>
       <PageTitle
         title="Intake & booking questions"
-        description="One form for everyone, plus questions for each service — asked once on the intake form, or every time a client books it."
+        description="Questions clients answer while booking: once, the first time they book a service, or every time."
       />
       {seeded ? (
         <FormBuilder

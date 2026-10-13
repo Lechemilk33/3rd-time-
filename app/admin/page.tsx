@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardList, Hourglass, Inbox, Users } from "lucide-react";
+import { BadgeCheck, CalendarDays, ClipboardList, Hourglass, Inbox, Syringe, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { adminData } from "@/app/admin/_lib";
@@ -11,6 +11,7 @@ import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
 import { getSiteSettings } from "@/lib/content";
 import { addDays, longDate, todayIn } from "@/lib/dates";
+import { latestUploads, recordsState } from "@/lib/records";
 import { sourceLabel } from "@/lib/source";
 import { isStripeConfigured } from "@/lib/stripe";
 
@@ -20,7 +21,7 @@ export default async function AdminHome() {
   const tz = config.settings.timezone;
   const today = todayIn(tz);
 
-  const [clients, intake, messages, todayRes, tomorrowRes, requestsRes, requestCount, capacityRes, emailRes, settings, sourcesRes] = await Promise.all([
+  const [clients, intake, messages, todayRes, tomorrowRes, requestsRes, requestCount, capacityRes, emailRes, settings, sourcesRes, petsRes, uploadsRes, metRes] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "client"),
     supabase.from("form_submissions").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase.from("contact_messages").select("id", { count: "exact", head: true }).eq("handled", false),
@@ -53,7 +54,24 @@ export default async function AdminHome() {
       .select("source")
       .eq("role", "client")
       .gte("created_at", new Date(Date.parse(`${today}T00:00:00Z`) - 90 * 86_400_000).toISOString()),
+    supabase.from("pets").select("id, owner_id, records_checked_at, rabies_until, distemper_until, bordetella_until"),
+    supabase.from("pet_records").select("pet_id, created_at"),
+    // Meet & greets that have happened, for clients still waiting to be approved.
+    supabase
+      .from("bookings")
+      .select("user_id, service:services!inner(audience), client:profiles!bookings_user_id_fkey!inner(booking_approved, role)")
+      .eq("service.audience", "everyone")
+      .eq("client.booking_approved", false)
+      .eq("client.role", "client")
+      .in("status", ["scheduled", "completed"])
+      .lte("service_date", today),
   ]);
+
+  // Pups with vaccine records the team hasn't looked at yet, and clients ready for approval.
+  const latest = latestUploads(uploadsRes.data);
+  const toCheck = (petsRes.data ?? []).filter((p) => recordsState(p, latest.get(p.id)) === "checking");
+  const toCheckOwners = new Set(toCheck.map((p) => p.owner_id as string));
+  const readyToApprove = new Set((metRes.data ?? []).map((b) => b.user_id as string));
 
   // How new clients found the site in the last 90 days (flyer QR codes, Google, Instagram…).
   const sourceCounts = [...(sourcesRes.data ?? []).reduce((m, r) => {
@@ -201,6 +219,42 @@ export default async function AdminHome() {
               </ul>
             </Card>
           ) : null}
+          {readyToApprove.size ? (
+            <Card>
+              <Link
+                href={readyToApprove.size === 1 ? `/admin/clients/${[...readyToApprove][0]}` : "/admin/clients?filter=new"}
+                className="flex items-center gap-3"
+              >
+                <span className="grid size-10 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
+                  <BadgeCheck className="size-5" aria-hidden />
+                </span>
+                <span>
+                  <span className="block font-bold">
+                    {readyToApprove.size} client{readyToApprove.size === 1 ? "" : "s"} met, ready to approve
+                  </span>
+                  <span className="text-sm text-ink-600">Approve them so they can book walks.</span>
+                </span>
+              </Link>
+            </Card>
+          ) : null}
+          {toCheck.length ? (
+            <Card>
+              <Link
+                href={toCheckOwners.size === 1 ? `/admin/clients/${[...toCheckOwners][0]}#records-${toCheck[0].id}` : "/admin/clients?filter=records"}
+                className="flex items-center gap-3"
+              >
+                <span className="grid size-10 place-items-center rounded-2xl bg-sun-100">
+                  <Syringe className="size-5" aria-hidden />
+                </span>
+                <span>
+                  <span className="block font-bold">
+                    {toCheck.length} pup{toCheck.length === 1 ? "’s" : "s’"} vaccine records to check
+                  </span>
+                  <span className="text-sm text-ink-600">Note how long each shot is good for, and we’ll remind them.</span>
+                </span>
+              </Link>
+            </Card>
+          ) : null}
           {(intake.count ?? 0) > 0 ? (
             <Card>
               <Link href="/admin/clients?filter=review" className="flex items-center gap-3">
@@ -209,9 +263,9 @@ export default async function AdminHome() {
                 </span>
                 <span>
                   <span className="block font-bold">
-                    {intake.count} intake form{intake.count === 1 ? "" : "s"} to review
+                    {intake.count} client{intake.count === 1 ? "’s" : "s’"} answers to read
                   </span>
-                  <span className="text-sm text-ink-600">Approve clients so they can book walks.</span>
+                  <span className="text-sm text-ink-600">What they told us about their pup while booking.</span>
                 </span>
               </Link>
             </Card>

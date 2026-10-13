@@ -107,14 +107,9 @@ export function SignupForm({ disabled }: { disabled?: boolean }) {
       <Field label="Your name" htmlFor="full_name" required>
         <Input id="full_name" name="full_name" autoComplete="name" required disabled={disabled} />
       </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Email" htmlFor="email" required>
-          <Input id="email" name="email" type="email" autoComplete="email" required disabled={disabled} />
-        </Field>
-        <Field label="Phone" htmlFor="phone">
-          <Input id="phone" name="phone" type="tel" autoComplete="tel" disabled={disabled} />
-        </Field>
-      </div>
+      <Field label="Email" htmlFor="email" required>
+        <Input id="email" name="email" type="email" autoComplete="email" required disabled={disabled} />
+      </Field>
       <Field label="Password" htmlFor="password" required help="At least 8 characters.">
         <Input
           id="password"
