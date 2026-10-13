@@ -7,6 +7,7 @@ import { cancelVisit, getAvailability, getServiceDays, rescheduleVisit } from "@
 import { DateWindowPicker } from "@/components/booking/date-window-picker";
 import { DaysPicker, StayPicker, TimeSlotPicker } from "@/components/booking/day-pickers";
 import { PetStack } from "@/components/calendar/event-bits";
+import { MapPreview } from "@/components/maps/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -18,7 +19,6 @@ import {
   icsForVisits,
   isMeetGreet,
   isMultiDay,
-  mapsUrl,
   petNames,
   STATUS_META,
   visitTimeLabel,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/booking";
 import { addDays, diffDays, formatYmd, longDate, timeToMinutes, zonedToDate, type Ymd } from "@/lib/dates";
 import { formatDuration, formatMoney } from "@/lib/format";
+import { mapsUrl } from "@/lib/maps";
 import { payState, visitAmount } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 
@@ -204,7 +205,7 @@ function VisitCard({
         start,
         end,
         description: w && pinned == null ? `Arrival window: ${w.label}` : "Waiting for Paws",
-        location: v.meeting_place ?? undefined,
+        location: v.meeting_place ? [v.meeting_place, v.meeting_address].filter(Boolean).join(", ") : undefined,
       },
     ]);
     const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
@@ -252,15 +253,19 @@ function VisitCard({
             </p>
           ) : null}
           {v.meeting_place ? (
-            <p className="mt-0.5 flex items-start gap-1.5 text-sm font-bold text-ink">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
-              <span>
-                Meeting at{" "}
-                <a href={mapsUrl(v.meeting_place)} target="_blank" rel="noreferrer" className="text-ocean underline">
-                  {v.meeting_place}
-                </a>
-              </span>
-            </p>
+            <div className="mt-1.5 space-y-2">
+              <p className="flex items-start gap-1.5 text-sm font-bold text-ink">
+                <MapPin className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
+                <span>
+                  Meeting at {v.meeting_place}
+                  {v.meeting_address ? <span className="block font-semibold text-ink-600">{v.meeting_address}</span> : null}
+                  <a href={mapsUrl(v.meeting_place, v.meeting_address)} target="_blank" rel="noreferrer" className="text-ocean underline">
+                    Open in Maps
+                  </a>
+                </span>
+              </p>
+              {active && !past ? <MapPreview name={v.meeting_place} address={v.meeting_address} className="h-36 max-w-md" /> : null}
+            </div>
           ) : isMeetGreet(v) ? (
             <p className="mt-0.5 flex items-start gap-1.5 text-sm font-bold text-ink-600">
               <MapPin className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />

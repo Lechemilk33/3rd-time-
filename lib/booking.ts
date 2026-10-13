@@ -367,11 +367,6 @@ export function initials(name: string) {
     .join("");
 }
 
-/** Google Maps search for an address or meeting spot. */
-export function mapsUrl(place: string) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
-}
-
 /** Meet & greets (the services everyone can book) happen at a public spot the team picks. */
 export const isMeetGreet = (b: { service: { audience: string } | null }) => b.service?.audience === "everyone";
 
@@ -379,7 +374,7 @@ export const isMeetGreet = (b: { service: { audience: string } | null }) => b.se
 export const BOOKING_DETAIL_SELECT = `
   id, user_id, service_id, title, kind, start_time, end_time, status, source, service_date, end_date,
   window_id, arrival_time, planned_minute, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason, handoff,
-  meeting_place, invitee_name, invitee_email, paid_at, paid_cents, paid_via, payment_id, refunded_cents, created_at, updated_at,
+  meeting_place, meeting_address, meeting_place_id, invitee_name, invitee_email, paid_at, paid_cents, paid_via, payment_id, refunded_cents, created_at, updated_at,
   client:profiles!bookings_user_id_fkey (id, full_name, email, phone, address, access_notes,
     emergency_contact_name, emergency_contact_phone, booking_approved),
   pets:booking_pets (pet:pets (id, name, breed, photo_url, temperament, walking_notes, medical_notes,

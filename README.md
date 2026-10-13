@@ -217,6 +217,22 @@ it never hits its 60-day expiry. Posts are cached for an hour and never stored, 
 image links expire. To skip the app ID and secret, generate a token in the Meta dashboard
 (Generate access tokens → Add account) and paste it into the same Integrations card instead.
 
+### 7. Google Maps (meeting places)
+
+Meet & greets happen at a public spot the team picks. Save the spots you use in **Admin → Meeting
+places** (a name like “OB Dog Park” and its address), then pick one in a booking’s **Where to meet**.
+Clients see the spot with a map in their visits and emails. Links to Google Maps work without a key;
+address suggestions and map previews need one:
+
+1. In [Google Cloud](https://console.cloud.google.com/google/maps-apis), enable **Maps JavaScript
+   API**, **Places API (New)** and **Maps Embed API**, and create an API key.
+2. Restrict the key: **Application restrictions → Websites** `https://waitingforpaws.com/*` and
+   `https://www.waitingforpaws.com/*`; **API restrictions** to those three APIs.
+3. Set it as `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in Vercel and redeploy.
+
+Map previews (Maps Embed API) have no usage charge. Address suggestions are only used by the team,
+well within Google’s free monthly allowance.
+
 **Admin → Integrations** shows the status of each connection and the webhook URLs to copy.
 
 ## How the no-code editing works

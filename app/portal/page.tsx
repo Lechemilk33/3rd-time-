@@ -38,7 +38,7 @@ export default async function PortalHome() {
       .limit(4),
     supabase
       .from("bookings")
-      .select("service_id, status, service_date, meeting_place")
+      .select("service_id, status, service_date, meeting_place, meeting_address")
       .eq("user_id", user.id)
       .not("status", "in", "(canceled,declined)")
       .order("service_date")
@@ -111,7 +111,7 @@ export default async function PortalHome() {
               {meetGreetBooking.service_date >= today
                 ? `Your meet & greet is on ${longDate(meetGreetBooking.service_date as Ymd)}. ${
                     meetGreetBooking.meeting_place
-                      ? `We’ll meet at ${meetGreetBooking.meeting_place}. `
+                      ? `We’ll meet at ${[meetGreetBooking.meeting_place, meetGreetBooking.meeting_address].filter(Boolean).join(", ")}. `
                       : "We’ll pick a public spot nearby and let you know where. "
                   }`
                 : ""}

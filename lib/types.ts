@@ -251,6 +251,9 @@ export type Booking = {
   handoff: Handoff | null;
   /** Where we meet them, picked by the team (meet & greets happen at a public spot). */
   meeting_place: string | null;
+  meeting_address: string | null;
+  /** The saved place the spot came from (name and address are copied onto the booking). */
+  meeting_place_id: string | null;
   cancel_reason: string | null;
   invitee_name: string | null;
   invitee_email: string | null;
@@ -260,6 +263,15 @@ export type Booking = {
   paid_via: "card" | "cash" | "other" | null;
   payment_id: string | null;
   refunded_cents: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** A spot the team meets clients at, saved for reuse ("OB Dog Park"). */
+export type Place = {
+  id: string;
+  name: string;
+  address: string;
   created_at: string;
   updated_at: string;
 };

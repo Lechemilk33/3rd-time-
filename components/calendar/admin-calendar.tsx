@@ -137,6 +137,7 @@ export function AdminCalendar({
         b.client?.phone,
         b.client?.address,
         b.meeting_place,
+        b.meeting_address,
         b.walker_id ? walkerMap.get(b.walker_id)?.display_name : "unassigned",
         ...b.pets.flatMap((p) => [p.name, p.breed]),
       ]

@@ -12,6 +12,7 @@ import {
   MapPin,
   MessageSquareText,
   Phone,
+  Plus,
   Repeat,
   RotateCcw,
   ShieldAlert,
@@ -24,17 +25,19 @@ import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, 
 import {
   cancelBooking,
   deleteBooking,
-  getMeetingPlaces,
   markVisitPaid,
   markVisitUnpaid,
   moveBooking,
   refundVisit,
   setBookingStatus,
-  setMeetingPlace,
+  setMeetingSpot,
   updateBooking,
 } from "@/app/admin/_actions/bookings";
+import { getPlaces } from "@/app/admin/_actions/places";
 import { useCalendar, walkerColor } from "@/components/calendar/context";
 import { PetAvatar } from "@/components/calendar/event-bits";
+import { AddressInput } from "@/components/maps/address-input";
+import { MapPreview } from "@/components/maps/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -47,7 +50,6 @@ import {
   isMeetGreet,
   isMultiDay,
   lengthOptions,
-  mapsUrl,
   petNames,
   STATUS_META,
   visitTimeLabel,
@@ -57,8 +59,9 @@ import {
 import { addDays, diffDays, isYmd, longDate, minutesToTimeInput, timeToMinutes } from "@/lib/dates";
 import { formatDate, formatDuration, formatMoney } from "@/lib/format";
 import { answerRows } from "@/lib/intake";
+import { mapsUrl } from "@/lib/maps";
 import { payLabel, payState, visitAmount } from "@/lib/payments";
-import type { ActionResult, Handoff } from "@/lib/types";
+import type { ActionResult, Handoff, Place } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Panel = null | "cancel" | "decline" | "move";
@@ -318,8 +321,9 @@ export function BookingDrawer({
               {active ? (
                 <MeetingSpotEditor key={`${b.id}-${b.meeting_place ?? ""}`} booking={b} pending={pending} run={run} unsaved={unsaved} who={who} />
               ) : b.meeting_place ? (
-                <a href={mapsUrl(b.meeting_place)} target="_blank" rel="noreferrer" className="font-bold text-ocean hover:underline">
+                <a href={mapsUrl(b.meeting_place, b.meeting_address)} target="_blank" rel="noreferrer" className="font-bold text-ocean hover:underline">
                   {b.meeting_place}
+                  {b.meeting_address ? <span className="block text-sm font-semibold text-ink-600">{b.meeting_address}</span> : null}
                 </a>
               ) : (
                 <p className="text-ink-600">No spot was picked.</p>
@@ -642,7 +646,10 @@ function NotesEditor({
   );
 }
 
-/** The public spot we'll meet at. Recent spots are one tap away; saving emails a confirmed visit's client. */
+/**
+ * The public spot we'll meet at: one of the team's saved places, or somewhere else (which can be saved for
+ * next time). Saving emails a confirmed visit's client.
+ */
 function MeetingSpotEditor({
   booking: b,
   pending,
@@ -656,66 +663,143 @@ function MeetingSpotEditor({
   unsaved?: RefObject<Set<string>>;
   who: string;
 }) {
-  const [place, setPlace] = useState(b.meeting_place ?? "");
-  const [recent, setRecent] = useState<string[]>([]);
+  const [places, setPlaces] = useState<Place[] | null>(null);
   useEffect(() => {
     let live = true;
-    getMeetingPlaces().then((spots) => live && setRecent(spots), () => {});
+    getPlaces().then(
+      (list) => live && setPlaces(list),
+      () => live && setPlaces([]),
+    );
     return () => {
       live = false;
     };
   }, []);
-  const dirty = place.trim() !== (b.meeting_place ?? "");
-  useUnsaved(unsaved, "meeting", dirty);
-  const save = () => run(() => setMeetingPlace(b.id, place));
-  const picks = recent.filter((spot) => spot !== place.trim());
+  // A saved place's id, "other" for a one-off spot, or "" for nothing picked yet.
+  const [choice, setChoice] = useState(b.meeting_place_id ?? (b.meeting_place ? "other" : ""));
+  const [name, setName] = useState(b.meeting_place_id ? "" : (b.meeting_place ?? ""));
+  const [address, setAddress] = useState(b.meeting_place_id ? "" : (b.meeting_address ?? ""));
+  const [remember, setRemember] = useState(true);
+  const [changing, setChanging] = useState(!b.meeting_place);
+
+  const current = b.meeting_place_id ?? (b.meeting_place ? "other" : "");
+  const dirty =
+    choice === "other"
+      ? Boolean(name.trim()) && (name.trim() !== (b.meeting_place ?? "") || address.trim() !== (b.meeting_address ?? "") || current !== "other")
+      : Boolean(choice) && choice !== current;
+  useUnsaved(unsaved, "meeting", changing && dirty);
+  const save = () =>
+    run(() =>
+      setMeetingSpot(b.id, choice === "other" ? { name, address, save: remember } : { placeId: choice }),
+    );
+
+  if (b.meeting_place && !changing) {
+    return (
+      <div className="space-y-2.5">
+        <div>
+          <p className="font-extrabold text-ink">{b.meeting_place}</p>
+          {b.meeting_address ? <p className="text-sm text-ink-600">{b.meeting_address}</p> : null}
+        </div>
+        <MapPreview name={b.meeting_place} address={b.meeting_address} />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <a
+            href={mapsUrl(b.meeting_place, b.meeting_address)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-sm font-bold text-ocean hover:underline"
+          >
+            Open in Maps <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+          <button type="button" onClick={() => setChanging(true)} className="text-sm font-bold text-ocean hover:underline">
+            Change spot
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => setMeetingSpot(b.id, { name: "" }))}
+            className="text-sm font-bold text-ink-400 hover:text-red-700"
+          >
+            Remove
+          </button>
+        </div>
+        {b.status === "scheduled" ? <p className="text-xs text-ink-400">{who} gets an email if you change it.</p> : null}
+      </div>
+    );
+  }
+
+  const option = (on: boolean) =>
+    cn(
+      "flex w-full items-start gap-2.5 rounded-2xl border-2 px-3 py-2.5 text-left transition",
+      on ? "border-ocean bg-sea-50" : "border-ink-100 bg-white hover:border-ink-200",
+    );
 
   return (
-    <div className="space-y-2.5">
+    <form
+      className="space-y-2.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (dirty) save();
+      }}
+    >
       {!b.meeting_place && b.status === "requested" ? (
         <p className="rounded-xl bg-sun-100 p-2.5 text-sm font-semibold">Pick a public spot, then confirm. It goes in their confirmation email.</p>
       ) : null}
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (dirty) save();
-        }}
-      >
-        <Input
-          aria-label="Where to meet"
-          value={place}
-          maxLength={300}
-          onChange={(e) => setPlace(e.target.value)}
-          placeholder="e.g. Robb Field, by the playground"
-          className="py-2"
-        />
-        <Button type="submit" size="sm" variant="secondary" disabled={pending || !dirty} className="shrink-0">
-          Save
-        </Button>
-      </form>
-      {picks.length ? (
-        <div className="flex flex-wrap gap-1.5">
-          {picks.map((spot) => (
-            <button
-              key={spot}
-              type="button"
-              onClick={() => setPlace(spot)}
-              className="max-w-full truncate rounded-full border border-ink-100 bg-white px-3 py-1 text-xs font-bold text-ink-600 hover:border-ocean hover:text-ocean"
-            >
-              {spot}
+      {places === null ? (
+        <p className="flex items-center gap-2 text-sm text-ink-600">
+          <LoaderCircle className="size-4 animate-spin" aria-hidden /> Loading your places…
+        </p>
+      ) : (
+        <div className="space-y-2" role="radiogroup" aria-label="Where to meet">
+          {places.map((p) => (
+            <button key={p.id} type="button" role="radio" aria-checked={choice === p.id} onClick={() => setChoice(p.id)} className={option(choice === p.id)}>
+              <MapPin className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
+              <span className="min-w-0">
+                <span className="block font-bold">{p.name}</span>
+                {p.address ? <span className="block truncate text-xs text-ink-600">{p.address}</span> : null}
+              </span>
             </button>
           ))}
+          <button type="button" role="radio" aria-checked={choice === "other"} onClick={() => setChoice("other")} className={option(choice === "other")}>
+            <Plus className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
+            <span className="font-bold">{places.length ? "Somewhere else" : "Add a spot"}</span>
+          </button>
+        </div>
+      )}
+
+      {choice === "other" ? (
+        <div className="space-y-2.5 rounded-2xl bg-sea-50/60 p-3">
+          <Input aria-label="Name of the spot" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Name, like OB Dog Park" className="py-2" />
+          <AddressInput
+            aria-label="Address"
+            value={address}
+            maxLength={300}
+            onChange={setAddress}
+            onPick={(picked) => !name.trim() && setName(picked.name.slice(0, 80))}
+            placeholder="Address (search or type it)"
+            className="py-2"
+          />
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 accent-ocean" />
+            Save to my places for next time
+          </label>
         </div>
       ) : null}
-      {b.meeting_place ? (
-        <a href={mapsUrl(b.meeting_place)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-bold text-ocean hover:underline">
-          Open in Maps <ExternalLink className="size-3.5" aria-hidden />
-        </a>
-      ) : null}
-      {b.status === "scheduled" ? <p className="text-xs text-ink-400">{who} gets an email when you save a new spot.</p> : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" size="sm" variant="secondary" disabled={pending || !dirty}>
+          Save spot
+        </Button>
+        {b.meeting_place ? (
+          <Button size="sm" variant="ghost" onClick={() => setChanging(false)}>
+            Cancel
+          </Button>
+        ) : null}
+        <Link href="/admin/places" className="ml-auto text-xs font-bold text-ocean hover:underline">
+          Manage places
+        </Link>
+      </div>
+      {b.status === "scheduled" ? <p className="text-xs text-ink-400">{who} gets an email when you save a spot.</p> : null}
       {b.client_note ? <p className="text-xs text-ink-400">Check their note below in case they asked to meet somewhere specific.</p> : null}
-    </div>
+    </form>
   );
 }
 

@@ -188,27 +188,34 @@ export async function updateBooking(
   return { ok: true, message: "Saved." };
 }
 
-/** Where to meet (meet & greets happen at a public spot we pick). A confirmed visit's client is emailed the new spot. */
-export async function setMeetingPlace(id: string, place: string): Promise<ActionResult> {
+/**
+ * Where to meet (meet & greets happen at a public spot we pick): a saved place, or a one-off name and
+ * address that can be saved for next time. A confirmed visit's client is emailed the new spot.
+ */
+export async function setMeetingSpot(
+  id: string,
+  spot: { placeId?: string | null; name?: string; address?: string; save?: boolean },
+): Promise<ActionResult> {
   if (!UUID.test(id)) return { ok: false, error: "Visit not found." };
   const supabase = await adminClient();
-  const value = clampText(place, 300).trim();
-  const { data, error } = await supabase.rpc("set_meeting_place", { p_booking_id: id, p_place: value });
+  let placeId = uuidOrNull(spot.placeId);
+  const name = clampText(spot.name, 80).trim();
+  const address = clampText(spot.address, 300).trim();
+  if (!placeId && name && spot.save) {
+    const { data, error } = await supabase.from("places").insert({ name, address }).select("id").single();
+    if (error) return { ok: false, error: rpcError(error) };
+    placeId = data.id as string;
+  }
+  const { data, error } = await supabase.rpc("set_meeting_spot", {
+    p_booking_id: id,
+    p_name: placeId ? null : name,
+    p_address: placeId ? null : address,
+    p_place_id: placeId,
+  });
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
-  return { ok: true, message: !value ? "Meeting spot cleared" : data ? "Meeting spot saved · client emailed" : "Meeting spot saved" };
-}
-
-/** Spots we've met at before, most recent first, for one-tap picks. */
-export async function getMeetingPlaces(): Promise<string[]> {
-  const supabase = await adminClient();
-  const { data } = await supabase
-    .from("bookings")
-    .select("meeting_place")
-    .not("meeting_place", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(100);
-  return [...new Set((data ?? []).map((r) => r.meeting_place as string))].slice(0, 6);
+  if (!placeId && !name) return { ok: true, message: "Meeting spot cleared" };
+  return { ok: true, message: data ? "Meeting spot saved · client emailed" : "Meeting spot saved" };
 }
 
 export async function deleteBooking(id: string): Promise<ActionResult> {

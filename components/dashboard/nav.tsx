@@ -14,6 +14,7 @@ import {
   Inbox,
   LayoutDashboard,
   LayoutTemplate,
+  MapPin,
   Palette,
   PawPrint,
   Plug,
@@ -71,6 +72,7 @@ const NAV: Record<"portal" | "admin", NavGroup[]> = {
       items: [
         { href: "/admin/services", label: "Services & prices", icon: Tags },
         { href: "/admin/schedule", label: "Schedule", icon: Clock },
+        { href: "/admin/places", label: "Meeting places", icon: MapPin },
         { href: "/admin/intake-form", label: "Booking questions", icon: ClipboardList },
       ],
     },
