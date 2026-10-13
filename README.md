@@ -141,6 +141,27 @@ Booking is built in — no third-party scheduler.
 Clients then see a **Pay** button in **Portal → Payments**. Checkout is hosted by Stripe and the
 amount always comes from the service's price in the database.
 
+### 6. Instagram feed (optional)
+
+The home page has an **Instagram feed** section (also in the page editor) that shows the latest
+posts from the business account through Instagram’s official API (Instagram API with Instagram
+Login, free, for business or creator accounts). Until it’s connected, it shows a “Follow
+@waitingforpaws” card instead.
+
+1. Run `supabase/migrations/20261013100000_instagram_feed.sql` and set `SUPABASE_SECRET_KEY`.
+2. Create an app at [developers.facebook.com](https://developers.facebook.com/apps) with the use
+   case “Manage messaging & content on Instagram”. Under **Instagram → API setup with Instagram
+   login**, copy the Instagram app ID and secret into `INSTAGRAM_APP_ID` and `INSTAGRAM_APP_SECRET`,
+   and add `https://YOUR-DOMAIN/api/instagram/callback` as a redirect URL for business login.
+3. Under **App roles → Roles**, add the Instagram account as an *Instagram Tester* and accept the
+   invite in Instagram (Settings → Apps and websites → Tester invites).
+4. The owner clicks **Connect Instagram** in **Admin → Integrations**.
+
+The token is stored in Supabase Vault (only the server can read it) and renewed every few days, so
+it never hits its 60-day expiry. Posts are cached for an hour and never stored, because Instagram’s
+image links expire. To skip the app ID and secret, generate a token in the Meta dashboard
+(Generate access tokens → Add account) and paste it into the same Integrations card instead.
+
 **Admin → Integrations** shows the status of each connection and the webhook URLs to copy.
 
 ## How the no-code editing works
@@ -152,6 +173,7 @@ amount always comes from the service's price in the database.
 | Page content               | `sections`: ordered blocks with a `type` and JSON `data`  |
 | Services & prices          | `services`                                                |
 | Gallery                    | `gallery_photos` + Supabase Storage (`media/gallery/…`)   |
+| Instagram connection       | `private.instagram_account` + Vault (token, server only)  |
 | Intake form questions      | `forms` (JSON field list); answers in `form_submissions`  |
 | Booking rules & windows    | `booking_settings`, `booking_windows`                     |
 | Walkers & hours            | `walkers`, `walker_hours`, `time_off`                     |

@@ -157,6 +157,18 @@ export const DEFAULT_PAGES: DefaultPage[] = [
       },
       serviceArea,
       {
+        type: "instagram_feed",
+        visible: true,
+        data: {
+          eyebrow: "On Instagram",
+          heading: "Fresh from our walks",
+          intro: "",
+          limit: "8",
+          buttonLabel: "",
+          background: "sand",
+        },
+      },
+      {
         type: "testimonials",
         visible: false,
         data: {

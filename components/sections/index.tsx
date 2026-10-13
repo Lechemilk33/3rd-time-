@@ -6,6 +6,7 @@ import { FaqSection } from "@/components/sections/faq";
 import { FeaturesSection } from "@/components/sections/features";
 import { GallerySection } from "@/components/sections/gallery";
 import { HeroSection } from "@/components/sections/hero";
+import { InstagramFeedSection } from "@/components/sections/instagram-feed";
 import { PageHeaderSection } from "@/components/sections/page-header";
 import { ServiceAreaSection } from "@/components/sections/service-area";
 import { ServicesSection } from "@/components/sections/services";
@@ -20,6 +21,7 @@ const RENDERERS: Record<string, ComponentType<{ data: SectionData }>> = {
   services: ServicesSection,
   text_image: TextImageSection,
   gallery: GallerySection,
+  instagram_feed: InstagramFeedSection,
   service_area: ServiceAreaSection,
   testimonials: TestimonialsSection,
   faq: FaqSection,

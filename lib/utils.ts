@@ -41,3 +41,9 @@ export function safeHref(href: string | null | undefined, fallback = "#") {
 export function isExternalHref(href: string) {
   return /^(https?:)?\/\//i.test(href);
 }
+
+/** "@name" from an Instagram profile link, or "" when it isn't one. */
+export function instagramHandle(url: string) {
+  const match = url.match(/instagram\.com\/([^/?#]+)/i);
+  return match ? `@${match[1]}` : "";
+}

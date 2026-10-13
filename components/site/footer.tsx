@@ -3,12 +3,7 @@ import Link from "next/link";
 import { InstagramIcon } from "@/components/ui/icons";
 import { Logo } from "@/components/site/logo";
 import { getCopyrightYear, getNavLinks, getSiteSettings } from "@/lib/content";
-import { safeHref } from "@/lib/utils";
-
-function instagramHandle(url: string) {
-  const match = url.match(/instagram\.com\/([^/?#]+)/i);
-  return match ? `@${match[1]}` : "Instagram";
-}
+import { instagramHandle, safeHref } from "@/lib/utils";
 
 export async function Footer() {
   const [settings, links, year] = await Promise.all([getSiteSettings(), getNavLinks(), getCopyrightYear()]);
@@ -35,7 +30,7 @@ export async function Footer() {
               className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-bold transition hover:bg-white/20"
             >
               <InstagramIcon className="size-4" />
-              {instagramHandle(settings.instagramUrl)}
+              {instagramHandle(settings.instagramUrl) || "Instagram"}
             </a>
           ) : null}
         </div>
