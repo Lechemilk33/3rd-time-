@@ -18,7 +18,14 @@ const LABELS: Record<string, string> = {
 /** "flyer" → "Flyer", "google" → "Google", anything else as given. */
 export function sourceLabel(source: string | null | undefined) {
   if (!source) return "Unknown";
+  if (source.startsWith("friend-")) return "Friend referral";
   return LABELS[source] ?? source;
+}
+
+/** The first 8 characters of the referring client's id, for invite links ("friend-1a2b3c4d"). */
+export function referrerPrefix(source: string | null | undefined) {
+  const m = /^friend-([0-9a-f]{8})$/.exec(source ?? "");
+  return m ? m[1] : null;
 }
 
 /** Lowercase letters, digits, dots, dashes and spaces only; 40 characters at most. */

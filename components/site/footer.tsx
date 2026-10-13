@@ -1,13 +1,14 @@
-import { Mail, MapPin, Phone, Clock } from "lucide-react";
+import { Clock, Mail, MapPin, Phone, Star } from "lucide-react";
 import Link from "next/link";
 import { InstagramIcon } from "@/components/ui/icons";
 import { Logo } from "@/components/site/logo";
-import { getCopyrightYear, getNavLinks, getSiteSettings } from "@/lib/content";
+import { getBookingPolicy, getCopyrightYear, getNavLinks, getSiteSettings } from "@/lib/content";
 import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
+import { AREA_PAGES, GUIDE_PAGES } from "@/lib/local-pages";
 import { instagramHandle, safeHref } from "@/lib/utils";
 
 export async function Footer() {
-  const [settings, links, year] = await Promise.all([getSiteSettings(), getNavLinks(), getCopyrightYear()]);
+  const [settings, links, year, policy] = await Promise.all([getSiteSettings(), getNavLinks(), getCopyrightYear(), getBookingPolicy()]);
 
   return (
     <footer className="relative mt-auto bg-ink text-white">
@@ -19,7 +20,7 @@ export async function Footer() {
       >
         <path d="M0 48h1440V20c-120 18-240 26-360 18S840 4 720 6 480 34 360 36 120 22 0 12z" fill="currentColor" />
       </svg>
-      <div className="container-page grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="container-page grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div className="space-y-4">
           <Logo name={settings.businessName} logoUrl={settings.logoUrl} inverted />
           {settings.footerBlurb ? <p className="max-w-sm text-white/75">{settings.footerBlurb}</p> : null}
@@ -32,6 +33,17 @@ export async function Footer() {
             >
               <InstagramIcon className="size-4" />
               {instagramHandle(settings.instagramUrl) || "Instagram"}
+            </a>
+          ) : null}
+          {policy.review_url ? (
+            <a
+              href={policy.review_url}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-2 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-bold transition hover:bg-white/20"
+            >
+              <Star className="size-4 fill-sun text-sun" aria-hidden />
+              Review us on Google
             </a>
           ) : null}
         </div>
@@ -56,6 +68,26 @@ export async function Footer() {
                 Client login
               </Link>
             </li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 className="mb-4 font-display text-lg text-sun">Around town</h2>
+          <ul className="space-y-2.5 text-white/80">
+            {AREA_PAGES.map((p) => (
+              <li key={p.slug}>
+                <Link href={`/${p.slug}`} className="hover:text-white">
+                  Dog walking in {p.linkLabel}
+                </Link>
+              </li>
+            ))}
+            {GUIDE_PAGES.map((p) => (
+              <li key={p.slug}>
+                <Link href={`/${p.slug}`} className="hover:text-white">
+                  {p.linkLabel}
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
 

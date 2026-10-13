@@ -30,6 +30,8 @@ export type SiteSettings = {
     imageUrl: string;
     /** Google Search Console "HTML tag" verification code. */
     googleVerification?: string;
+    /** Bing Webmaster Tools "meta tag" verification code. */
+    bingVerification?: string;
   };
   theme: ThemeColors;
 };
@@ -183,6 +185,8 @@ export type Profile = {
   terms_accepted_at: string | null;
   /** How they first found the site (flyer, google, instagram…). */
   source: string | null;
+  /** When we emailed them asking for a Google review (once). */
+  review_requested_at: string | null;
   created_at: string;
 };
 

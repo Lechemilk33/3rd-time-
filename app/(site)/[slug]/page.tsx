@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Sections } from "@/components/sections";
-import { getPageContent, getPublishedSlugs } from "@/lib/content";
+import { LocalPageSchema } from "@/components/site/local-page-schema";
+import { getPageContent, getPublishedSlugs, getSiteSettings } from "@/lib/content";
 
 export async function generateStaticParams() {
   const slugs = await getPublishedSlugs();
@@ -11,12 +12,21 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps<"/[slug]">): Promise<Metadata> {
   const { slug } = await params;
-  const content = await getPageContent(slug);
+  const [content, settings] = await Promise.all([getPageContent(slug), getSiteSettings()]);
   if (!content) return {};
   return {
     title: content.page.title,
     description: content.page.seo_description ?? undefined,
     alternates: { canonical: `/${slug}` },
+    // A page's own share preview (setting openGraph here replaces the site-wide one, so it repeats the image).
+    openGraph: {
+      title: content.page.title,
+      description: content.page.seo_description ?? undefined,
+      url: `/${slug}`,
+      siteName: settings.businessName,
+      type: "website",
+      images: settings.seo.imageUrl ? [{ url: settings.seo.imageUrl }] : [{ url: "/brand/og.png", width: 1200, height: 630 }],
+    },
   };
 }
 
@@ -36,5 +46,10 @@ async function PageBody({ params }: Pick<PageProps<"/[slug]">, "params">) {
   if (slug === "home") notFound();
   const content = await getPageContent(slug);
   if (!content) notFound();
-  return <Sections sections={content.sections} />;
+  return (
+    <>
+      <LocalPageSchema slug={slug} />
+      <Sections sections={content.sections} />
+    </>
+  );
 }

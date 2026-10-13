@@ -1,6 +1,7 @@
-import { ArrowRight, CircleCheck, Circle, ClipboardList, Hourglass, PawPrint, Plus } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, ClipboardList, Gift, Hourglass, PawPrint, Plus, Star } from "lucide-react";
 import Link from "next/link";
 import { BookingList } from "@/components/portal/booking-list";
+import { ShareLink } from "@/components/portal/share-link";
 import { PageTitle } from "@/components/dashboard/shell";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,9 +9,10 @@ import { Photo } from "@/components/ui/photo";
 import { requireUser } from "@/lib/auth";
 import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
-import { getForm } from "@/lib/content";
+import { getBookingPolicy, getForm, getSiteSettings } from "@/lib/content";
 import { todayIn } from "@/lib/dates";
 import { missingRequired, unansweredForService } from "@/lib/intake";
+import { siteUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
 import type { FormAnswers, Pet, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,11 @@ export default async function PortalHome() {
     supabase.from("services").select("*").eq("active", true).order("position"),
     getForm("intake"),
   ]);
+  const [policy, settings] = await Promise.all([getBookingPolicy(), getSiteSettings()]);
+  const reviewUrl = policy.review_url;
+  const visitsDone = (anyBookingRes.data ?? []).filter((b) => b.status === "completed").length;
+  // Their personal invite link: sign-ups through it are saved as "friend-<their id>".
+  const inviteUrl = `${siteUrl()}/?src=friend-${user.id.slice(0, 8)}`;
 
   const pets = (petsRes.data ?? []) as Pet[];
   const upcoming = normalizeBookings(bookingsRes.data);
@@ -236,6 +243,37 @@ export default async function PortalHome() {
             </div>
           ) : null}
         </Card>
+      ) : null}
+
+      {approved || reviewUrl ? (
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {approved ? (
+            <Card className="space-y-3">
+              <span className="grid size-11 place-items-center rounded-2xl bg-sun-100">
+                <Gift className="size-5" aria-hidden />
+              </span>
+              <h2 className="text-xl font-semibold">Know a pup who’d love us?</h2>
+              <p className="text-ink-600">
+                Share your link with neighbors and friends. When they sign up through it, we’ll know you sent them.
+              </p>
+              <ShareLink url={inviteUrl} text={`We love our dog walker, ${settings.businessName}! Check them out:`} />
+            </Card>
+          ) : null}
+          {reviewUrl && visitsDone > 0 ? (
+            <Card className="space-y-3">
+              <span className="grid size-11 place-items-center rounded-2xl bg-sea-100 text-ocean">
+                <Star className="size-5" aria-hidden />
+              </span>
+              <h2 className="text-xl font-semibold">Enjoying the walks?</h2>
+              <p className="text-ink-600">
+                A quick Google review helps other dog owners nearby find us. It takes about 30 seconds.
+              </p>
+              <ButtonLink href={reviewUrl} target="_blank" rel="noreferrer" size="sm" variant="secondary">
+                Leave a review
+              </ButtonLink>
+            </Card>
+          ) : null}
+        </div>
       ) : null}
     </>
   );

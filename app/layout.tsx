@@ -33,8 +33,11 @@ export async function generateMetadata(): Promise<Metadata> {
       images,
     },
     twitter: { card: "summary_large_image" },
-    // Search Console's "HTML tag" check (Admin → Site settings → Search & sharing).
-    verification: settings.seo.googleVerification ? { google: settings.seo.googleVerification } : undefined,
+    // Search Console / Bing Webmaster "meta tag" checks (Admin → Site settings → Search & sharing).
+    verification: {
+      ...(settings.seo.googleVerification ? { google: settings.seo.googleVerification } : {}),
+      ...(settings.seo.bingVerification ? { other: { "msvalidate.01": settings.seo.bingVerification } } : {}),
+    },
   };
 }
 

@@ -32,6 +32,10 @@ export type BookingSettings = {
   walker_digest: boolean;
   reminder_hour: number;
   reply_to: string;
+  /** Email each client once, after their second visit, asking for a Google review. */
+  review_requests: boolean;
+  /** Google review link (Business Profile → Read reviews → Get more reviews). */
+  review_url: string | null;
 };
 
 /** A block of a walker's weekly working hours (ISO weekday: 1 = Monday). */
@@ -59,6 +63,8 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   walker_digest: true,
   reminder_hour: 18,
   reply_to: "hello@waitingforpaws.com",
+  review_requests: true,
+  review_url: null,
 };
 
 export type BookingPet = {

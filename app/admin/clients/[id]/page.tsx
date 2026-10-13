@@ -17,7 +17,7 @@ import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { formatAge, formatDate, formatMoney } from "@/lib/format";
 import type { FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
-import { sourceLabel } from "@/lib/source";
+import { referrerPrefix, sourceLabel } from "@/lib/source";
 import { cn } from "@/lib/utils";
 
 const INTAKE_LABELS: Record<SubmissionStatus, string> = {
@@ -42,6 +42,17 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
     supabase.from("services").select("id, name").order("position"),
   ]);
   const serviceNames = new Map((servicesRes.data ?? []).map((s) => [s.id as string, s.name as string]));
+  // Signed up through another client's invite link: who sent them.
+  const prefix = referrerPrefix(profile.source);
+  const { data: referrer } = prefix
+    ? await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .gte("id", `${prefix}-0000-0000-0000-000000000000`)
+        .lte("id", `${prefix}-ffff-ffff-ffff-ffffffffffff`)
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
   const pets = (petsRes.data ?? []) as Pet[];
   const submission = submissionRes.data;
   const payments = (paymentsRes.data ?? []) as Payment[];
@@ -98,8 +109,18 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
               <h2 className="mb-3 text-xl font-semibold">Booking</h2>
               <ApprovalToggle userId={profile.id} approved={profile.booking_approved} />
               <p className="mt-4 border-t border-ink-100 pt-3 text-sm text-ink-600">
-                Found us: <span className="font-bold text-ink">{sourceLabel(profile.source)}</span>
+                Found us:{" "}
+                {referrer ? (
+                  <Link href={`/admin/clients/${referrer.id}`} className="font-bold text-ocean hover:underline">
+                    Referred by {referrer.full_name || referrer.email}
+                  </Link>
+                ) : (
+                  <span className="font-bold text-ink">{sourceLabel(profile.source)}</span>
+                )}
               </p>
+              {profile.review_requested_at ? (
+                <p className="mt-1 text-sm text-ink-600">Asked for a Google review on {formatDate(profile.review_requested_at)}.</p>
+              ) : null}
               <p className="mt-1 text-sm text-ink-600">
                 {profile.terms_accepted_at
                   ? `Agreed to the Terms of Service and Privacy Policy on ${formatDate(profile.terms_accepted_at)}.`

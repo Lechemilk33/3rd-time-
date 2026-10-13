@@ -1,7 +1,9 @@
 import { MapPin } from "lucide-react";
+import Link from "next/link";
 import { RichText } from "@/components/sections/rich-text";
 import { SectionShell } from "@/components/sections/shell";
 import { str, strings } from "@/components/sections/helpers";
+import { AREA_LINKS } from "@/lib/local-pages";
 import type { SectionData } from "@/lib/types";
 
 export function ServiceAreaSection({ data }: { data: SectionData }) {
@@ -19,15 +21,28 @@ export function ServiceAreaSection({ data }: { data: SectionData }) {
           {str(data, "body") ? <RichText text={str(data, "body")} className="mt-4 text-lg text-ink-600" /> : null}
         </div>
         <ul className="flex flex-wrap gap-3">
-          {areas.map((area) => (
-            <li
-              key={area}
-              className="inline-flex items-center gap-2 rounded-full border-2 border-white bg-white px-4 py-2.5 font-bold text-ink shadow-sm"
-            >
-              <MapPin className="size-4 text-coral" aria-hidden />
-              {area}
-            </li>
-          ))}
+          {areas.map((area) => {
+            const chip = (
+              <>
+                <MapPin className="size-4 text-coral" aria-hidden />
+                {area}
+              </>
+            );
+            const cls = "inline-flex items-center gap-2 rounded-full border-2 border-white bg-white px-4 py-2.5 font-bold text-ink shadow-sm";
+            // Neighborhoods with their own page link to it.
+            const href = AREA_LINKS[area];
+            return (
+              <li key={area}>
+                {href ? (
+                  <Link href={href} className={`${cls} transition hover:border-sea-200 hover:text-ocean`}>
+                    {chip}
+                  </Link>
+                ) : (
+                  <span className={cls}>{chip}</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </SectionShell>

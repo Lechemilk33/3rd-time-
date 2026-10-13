@@ -1,4 +1,5 @@
 import { LEGAL_UPDATED, PRIVACY_TEXT, TERMS_TEXT } from "@/lib/legal";
+import { AREA_PAGES, GUIDE_DATE, GUIDE_PAGES, type LocalPage } from "@/lib/local-pages";
 import { DEFAULT_BOOKING_STEPS } from "@/lib/sections";
 import { DEFAULT_THEME } from "@/lib/theme";
 import type { DurationOption, FormDefinition, Handoff, Page, Section, Service, SiteSettings } from "@/lib/types";
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
       "Friendly, reliable dog walks, park trips and pet visits in Ocean Beach, Point Loma and nearby San Diego. Meet & greet first, then book online in minutes.",
     imageUrl: "",
     googleVerification: "",
+    bingVerification: "",
   },
   theme: DEFAULT_THEME,
 };
@@ -459,7 +461,56 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
   legalPage("terms", "Terms of Service", 6, "The terms for booking walks and visits with Waiting for Paws.", "Plain-English terms for booking walks and visits with us.", TERMS_TEXT),
   legalPage("privacy", "Privacy Policy", 7, "How Waiting for Paws collects, uses and protects your information.", "What we collect, why we need it, and how we keep it safe.", PRIVACY_TEXT),
+  ...AREA_PAGES.map((p, i) => localPage(p, 8 + i)),
+  ...GUIDE_PAGES.map((p, i) => localPage(p, 8 + AREA_PAGES.length + i)),
 ];
+
+// A function, not a constant: DEFAULT_PAGES above is built before constants below it exist.
+function bookCta() {
+  return {
+    type: "cta",
+    visible: true,
+    data: {
+      heading: "Ready when your pup is",
+      body: "Start with a free meet & greet. After that, book walks online anytime.",
+      buttonLabel: "Book a meet & greet",
+      buttonHref: "/book",
+      secondaryLabel: "See services & prices",
+      secondaryHref: "/services",
+      style: "ocean",
+    },
+  };
+}
+
+/** Neighborhood pages and local guides (lib/local-pages.ts), linked from the footer, not the menu. */
+function localPage(p: LocalPage, position: number): DefaultPage {
+  return {
+    slug: p.slug,
+    title: p.title,
+    nav_label: p.linkLabel,
+    show_in_nav: false,
+    published: true,
+    position,
+    seo_description: p.seo,
+    sections: [
+      { type: "page_header", visible: true, data: { eyebrow: p.eyebrow, heading: p.heading, intro: p.intro, background: "sea" } },
+      { type: "document", visible: true, data: { updated: p.area ? "" : GUIDE_DATE, body: p.body, background: "white" } },
+      ...(p.area
+        ? [
+            {
+              type: "services",
+              visible: true,
+              data: { eyebrow: "Services", heading: `Walks & visits in ${p.area}`, intro: "", showBookButton: true, background: "sand" },
+            },
+          ]
+        : []),
+      ...(p.faq?.length
+        ? [{ type: "faq", visible: true, data: { eyebrow: "FAQ", heading: `Questions from ${p.area} dog owners`, items: p.faq, background: "white" } }]
+        : []),
+      bookCta(),
+    ],
+  };
+}
 
 /** Terms and privacy: linked from the footer and sign-up, not the menu. */
 function legalPage(slug: string, title: string, position: number, seo: string, intro: string, body: string): DefaultPage {
@@ -478,8 +529,8 @@ function legalPage(slug: string, title: string, position: number, seo: string, i
   };
 }
 
-/** Pages every site has. Until the team edits them they're served from these defaults. */
-export const BUILT_IN_PAGES = ["terms", "privacy"];
+/** Pages every site has (legal, neighborhoods, guides). Until the team edits them they're served from these defaults. */
+export const BUILT_IN_PAGES = ["terms", "privacy", ...AREA_PAGES.map((p) => p.slug), ...GUIDE_PAGES.map((p) => p.slug)];
 
 const WINDOW_VISIT = {
   kind: "window",

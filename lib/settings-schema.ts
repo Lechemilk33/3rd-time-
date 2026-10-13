@@ -71,6 +71,12 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
             placeholder: "e.g. a1B2c3D4e5…",
             help: "In Search Console choose “HTML tag” and paste just the part inside content=\"…\".",
           },
+          {
+            key: "bingVerification",
+            label: "Bing Webmaster code",
+            type: "text",
+            help: "Bing also powers DuckDuckGo and ChatGPT search. In Bing Webmaster Tools choose “Meta tag” and paste just the content=\"…\" part (or simply import from Google Search Console).",
+          },
         ],
       },
     ],

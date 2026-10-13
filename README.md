@@ -133,6 +133,15 @@ Booking is built in — no third-party scheduler.
   someone visits, their browser remembers where they came from (`?src=flyer` on QR codes, or the
   referring site such as Google or Instagram) and sign-up saves it as `profiles.source`; the admin
   overview shows how new clients found you.
+- **Growing traffic:** neighborhood pages (`/dog-walking-ocean-beach`, `-point-loma`,
+  `-mission-beach`, `-pacific-beach`) and local guides (`/san-diego-dog-beach-guide`,
+  `/hot-weather-dog-walking-san-diego`) ship as built-in pages from `lib/local-pages.ts`, each with
+  its own content, FAQ and structured data, linked from the footer and the Service area chips; edit
+  them in Admin → Pages. Long text supports `[label](/page)` links. Add the Google review link in
+  Admin → Schedule → Booking rules: every client then gets one review request the morning after
+  their second finished visit, and the site footer and client portal show a review button.
+  Approved clients get a personal invite link in the portal (`?src=friend-…`); sign-ups through it
+  show "Referred by …" on their admin page.
 - **Terms & privacy:** `/terms` and `/privacy` ship with plain-English starting text
   (`lib/legal.ts`) and are linked from the footer, sign-up, booking and payments. The cancellation
   window in the terms is filled in live from Admin → Schedule. Edit either page in Admin → Pages.

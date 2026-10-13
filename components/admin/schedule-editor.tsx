@@ -73,6 +73,8 @@ export function RulesEditor({ settings }: { settings: BookingSettings }) {
     walker_digest: settings.walker_digest,
     reminder_hour: settings.reminder_hour,
     reply_to: settings.reply_to,
+    review_requests: settings.review_requests,
+    review_url: settings.review_url,
   });
   const { pending, result, run } = useAction();
   const set = <K extends keyof RulesInput>(k: K, v: RulesInput[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -120,6 +122,29 @@ export function RulesEditor({ settings }: { settings: BookingSettings }) {
             <Input id="r-reply" type="email" value={draft.reply_to} onChange={(e) => set("reply_to", e.target.value)} />
           </Field>
         </div>
+      </div>
+
+      <div className="space-y-4 border-t border-ink-100 pt-5">
+        <h3 className="font-display text-lg font-semibold">Google reviews</h3>
+        <Field
+          label="Your Google review link"
+          htmlFor="r-review"
+          help="In your Google Business Profile: Read reviews → Get more reviews → Copy link. It’s also shown on your site and in the client portal."
+        >
+          <Input
+            id="r-review"
+            type="url"
+            placeholder="https://g.page/r/…/review"
+            value={draft.review_url ?? ""}
+            onChange={(e) => set("review_url", e.target.value || null)}
+          />
+        </Field>
+        <Toggle
+          checked={draft.review_requests}
+          onChange={(v) => set("review_requests", v)}
+          label="Ask each client for a review after their second visit"
+          help="One friendly email per client, the morning after. Reviews are the biggest thing that gets you onto Google Maps."
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-ink-100 pt-5">

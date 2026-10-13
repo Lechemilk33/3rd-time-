@@ -23,12 +23,18 @@ export type RulesInput = {
   walker_digest: boolean;
   reminder_hour: number;
   reply_to: string;
+  review_requests: boolean;
+  review_url: string | null;
 };
 
 export async function saveBookingRules(input: RulesInput): Promise<ActionResult> {
   const supabase = await adminClient();
   const replyTo = clampText(input.reply_to, 200).trim();
   if (!/^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(replyTo)) return { ok: false, error: "Enter a valid reply-to email." };
+  const reviewUrl = clampText(input.review_url ?? "", 500).trim() || null;
+  if (reviewUrl && !/^https:\/\/[^\s<>"]+$/.test(reviewUrl)) {
+    return { ok: false, error: "Paste the full Google review link, starting with https://" };
+  }
   const { error } = await supabase
     .from("booking_settings")
     .update({
@@ -41,6 +47,8 @@ export async function saveBookingRules(input: RulesInput): Promise<ActionResult>
       walker_digest: Boolean(input.walker_digest),
       reminder_hour: int(input.reminder_hour, 0, 23, 18),
       reply_to: replyTo,
+      review_requests: Boolean(input.review_requests),
+      review_url: reviewUrl,
     })
     .eq("id", 1);
   if (error) return { ok: false, error: rpcError(error) };

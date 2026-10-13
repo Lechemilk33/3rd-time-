@@ -190,13 +190,13 @@ export async function getPublishedSlugs(): Promise<string[]> {
   return slugs.length ? [...new Set([...slugs, ...BUILT_IN_PAGES])] : fallback;
 }
 
-export type BookingPolicy = { cancel_cutoff_hours: number; min_notice_hours: number };
+export type BookingPolicy = { cancel_cutoff_hours: number; min_notice_hours: number; review_url: string | null };
 
-/** The booking rules quoted in the Terms of Service (set in Admin → Schedule). */
+/** The booking rules quoted in the Terms of Service and the Google review link (set in Admin → Schedule). */
 export async function getBookingPolicy(): Promise<BookingPolicy> {
   "use cache";
   cacheTag(CONTENT_TAG);
-  const fallback = { cancel_cutoff_hours: 12, min_notice_hours: 12 };
+  const fallback: BookingPolicy = { cancel_cutoff_hours: 12, min_notice_hours: 12, review_url: null };
   if (!isSupabaseConfigured()) {
     cacheLife("max");
     return fallback;
