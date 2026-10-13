@@ -14,6 +14,11 @@ const NOT_CONFIGURED: ActionResult = {
   error: "Client accounts aren’t connected yet. Please check back soon!",
 };
 
+/** Where an email link lands; `via` tells app/auth/callback which kind of email it was. */
+async function callbackUrl(next: string, via: "signup" | "login" | "reset") {
+  return `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}&via=${via}`;
+}
+
 function friendlyAuthError(message: string) {
   if (/invalid login credentials/i.test(message)) return "That email and password don’t match. Try again?";
   if (/email not confirmed/i.test(message)) return "Please confirm your email first — check your inbox for the link.";
@@ -29,11 +34,22 @@ export async function signIn(_prev: ActionResult | null, formData: FormData): Pr
   const password = formString(formData, "password");
   if (!email || !password) return { ok: false, error: "Enter your email and password." };
 
+  const next = safeNextPath(formString(formData, "next"));
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
+  // Right password, but the confirmation link was never used (or has expired): send a fresh one.
+  if (error && /email not confirmed/i.test(error.message)) {
+    const resent = await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: await callbackUrl(next, "signup") } });
+    return {
+      ok: false,
+      error: resent.error
+        ? "Please confirm your email first. The link is in your inbox (check spam too)."
+        : `Please confirm your email first. We just sent a fresh link to ${email}.`,
+    };
+  }
   if (error) return { ok: false, error: friendlyAuthError(error.message) };
 
-  redirect(safeNextPath(formString(formData, "next")));
+  redirect(next);
 }
 
 export async function sendMagicLink(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -47,7 +63,7 @@ export async function sendMagicLink(_prev: ActionResult | null, formData: FormDa
     email,
     options: {
       shouldCreateUser: false,
-      emailRedirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
+      emailRedirectTo: await callbackUrl(next, "login"),
     },
   });
   if (error && !/signups not allowed|user not found/i.test(error.message)) {
@@ -76,7 +92,7 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
     options: {
       // Saved on the profile with the time they agreed (see handle_new_user).
       data: { full_name: fullName, phone, terms_version: TERMS_VERSION, source: cleanSource(formString(formData, "source")) || null },
-      emailRedirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
+      emailRedirectTo: await callbackUrl(next, "signup"),
     },
   });
   if (error) return { ok: false, error: friendlyAuthError(error.message) };
@@ -88,6 +104,23 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
   };
 }
 
+/** "Send it again" after signing up. */
+export async function resendConfirmation(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  if (!isSupabaseConfigured()) return NOT_CONFIGURED;
+  const email = formString(formData, "email");
+  if (!email) return { ok: false, error: "Enter your email address." };
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: await callbackUrl(safeNextPath(formString(formData, "next")), "signup") },
+  });
+  if (error && /rate limit|security purposes|after \d+ seconds/i.test(error.message)) {
+    return { ok: false, error: "We just sent one. Give it a minute, then try again." };
+  }
+  return { ok: true, message: `Sent! Check ${email} (and your spam folder).` };
+}
+
 export async function requestPasswordReset(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   if (!isSupabaseConfigured()) return NOT_CONFIGURED;
   const email = formString(formData, "email");
@@ -95,7 +128,7 @@ export async function requestPasswordReset(_prev: ActionResult | null, formData:
 
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${await getOrigin()}/auth/callback?next=/portal/password`,
+    redirectTo: await callbackUrl("/portal/password", "reset"),
   });
   if (error && /rate limit/i.test(error.message)) return { ok: false, error: friendlyAuthError(error.message) };
   return { ok: true, message: "If there’s an account for that email, a reset link is on its way. 📬" };

@@ -2,6 +2,7 @@ import { cache, Suspense, type ReactNode } from "react";
 import { Logo } from "@/components/site/logo";
 import { MobileTabs, SidebarNav } from "@/components/dashboard/nav";
 import { MobileUserMenu, UserMenu } from "@/components/dashboard/user-menu";
+import { EmailConfirmed } from "@/components/portal/email-confirmed";
 import { getSiteSettings } from "@/lib/content";
 import { isSupabaseConfigured } from "@/lib/env";
 import { isStripeConfigured } from "@/lib/stripe";
@@ -45,15 +46,19 @@ async function Tabs({ area }: { area: "portal" | "admin" }) {
 export async function DashboardShell({ area, children }: { area: "portal" | "admin"; children: ReactNode }) {
   const settings = await getSiteSettings();
   const home = area === "admin" ? "/admin" : "/portal";
-  const label = area === "admin" ? "Admin" : "Client portal";
 
   return (
     <div className="flex-1 bg-sand/60 lg:grid lg:grid-cols-[16.5rem_1fr]">
       <aside className="sticky top-0 hidden h-dvh self-start flex-col overflow-y-auto border-r border-ink-100 bg-white p-5 lg:flex">
         <Logo name={settings.businessName} logoUrl={settings.logoUrl} href={home} />
-        <p className="mt-3 mb-6 inline-flex w-max rounded-full bg-sun-100 px-3 py-1 text-xs font-extrabold tracking-wide text-ink uppercase">
-          {label}
-        </p>
+        {/* Clients just see their space; the team gets a reminder they're behind the scenes. */}
+        {area === "admin" ? (
+          <p className="mt-3 mb-6 inline-flex w-max rounded-full bg-sun-100 px-3 py-1 text-xs font-extrabold tracking-wide text-ink uppercase">
+            Admin
+          </p>
+        ) : (
+          <div className="mb-6" />
+        )}
         <Suspense fallback={null}>
           <Sidebar area={area} />
         </Suspense>
@@ -76,7 +81,14 @@ export async function DashboardShell({ area, children }: { area: "portal" | "adm
             <Tabs area={area} />
           </Suspense>
         </header>
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-10">{children}</main>
+        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-10">
+          {area === "portal" ? (
+            <Suspense fallback={null}>
+              <EmailConfirmed />
+            </Suspense>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

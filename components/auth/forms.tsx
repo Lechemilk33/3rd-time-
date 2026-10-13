@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   requestPasswordReset,
+  resendConfirmation,
   sendMagicLink,
   signIn,
   signUp,
@@ -17,11 +18,37 @@ import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
 import { SOURCE_KEY } from "@/lib/source";
 import { useFormAction } from "@/lib/use-form-action";
 
-/** Reads ?next= and ?error= from the URL, so render it inside <Suspense>. */
+/** What an email link that couldn't sign them in here says (see app/auth/callback). */
+function LinkNotice() {
+  const params = useSearchParams();
+  if (params.get("confirmed")) {
+    return (
+      <Notice tone="success" title="Your email is confirmed! 🎉">
+        Log in below to finish setting up your account.
+      </Notice>
+    );
+  }
+  if (params.get("error") === "browser") {
+    return (
+      <Notice title="Almost there! Just log in below.">
+        Your login link opened in a different browser from the one you asked from, so we couldn’t sign you in automatically.
+      </Notice>
+    );
+  }
+  if (params.get("error") === "link") {
+    return (
+      <Notice tone="warning" title="That link has expired or was already used.">
+        If you’ve already confirmed your email, just log in below. If not, log in anyway and we’ll send you a fresh link.
+      </Notice>
+    );
+  }
+  return null;
+}
+
+/** Reads ?next=, ?confirmed= and ?error= from the URL, so render it inside <Suspense>. */
 export function LoginForm({ disabled }: { disabled?: boolean }) {
   const params = useSearchParams();
   const next = params.get("next") ?? "/portal";
-  const linkError = params.get("error") === "link";
   const [mode, setMode] = useState<"password" | "link">("password");
   const [pwState, pwSubmit, pwPending] = useFormAction(signIn);
   const [linkState, linkSubmit, linkPending] = useFormAction(sendMagicLink);
@@ -52,9 +79,7 @@ export function LoginForm({ disabled }: { disabled?: boolean }) {
 
   return (
     <div className="space-y-5">
-      {linkError ? (
-        <Notice tone="error">That link has expired or was already used. Please log in or request a new one.</Notice>
-      ) : null}
+      <LinkNotice />
       <form onSubmit={pwSubmit} className="space-y-4">
         <input type="hidden" name="next" value={next} />
         <Field label="Email" htmlFor="email">
@@ -98,7 +123,8 @@ export function SignupForm({ disabled }: { disabled?: boolean }) {
   // How they found us (see SourceTracker), saved on their profile.
   const source = useSyncExternalStore(noSubscribe, readSource, () => "");
   const [state, onSubmit, pending] = useFormAction(signUp);
-  if (state?.ok) return <Notice tone="success" title="Check your email">{state.message}</Notice>;
+  const [email, setEmail] = useState("");
+  if (state?.ok) return <CheckEmail email={email} next={next} message={state.message} />;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -108,7 +134,16 @@ export function SignupForm({ disabled }: { disabled?: boolean }) {
         <Input id="full_name" name="full_name" autoComplete="name" required disabled={disabled} />
       </Field>
       <Field label="Email" htmlFor="email" required>
-        <Input id="email" name="email" type="email" autoComplete="email" required disabled={disabled} />
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          disabled={disabled}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
       </Field>
       <Field label="Password" htmlFor="password" required help="At least 8 characters.">
         <Input
@@ -143,11 +178,48 @@ export function SignupForm({ disabled }: { disabled?: boolean }) {
   );
 }
 
+/** After signing up: where the link went, and a way to send it again. */
+function CheckEmail({ email, next, message }: { email: string; next: string; message?: string }) {
+  const [state, onSubmit, pending] = useFormAction(resendConfirmation);
+  return (
+    <div className="space-y-4">
+      <Notice tone="success" title="Check your email 📬">
+        {message}
+      </Notice>
+      {state?.ok ? (
+        <Notice tone="success">{state.message}</Notice>
+      ) : (
+        <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-600">
+          <input type="hidden" name="email" value={email} />
+          <input type="hidden" name="next" value={next} />
+          <span>Didn’t get it?</span>
+          <button type="submit" disabled={pending} className="font-bold text-ocean hover:underline disabled:opacity-60">
+            {pending ? "Sending…" : "Send it again"}
+          </button>
+        </form>
+      )}
+      {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
+    </div>
+  );
+}
+
+/** Reads ?error= (a reset link that didn't work), so render it inside <Suspense>. */
 export function ForgotPasswordForm({ disabled }: { disabled?: boolean }) {
+  const linkError = useSearchParams().get("error");
   const [state, onSubmit, pending] = useFormAction(requestPasswordReset);
   if (state?.ok) return <Notice tone="success">{state.message}</Notice>;
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {linkError === "browser" ? (
+        <Notice title="Let’s send you a new link.">
+          That reset link opened in a different browser from the one you asked from, so it couldn’t finish. Send a new one
+          from here and open it from your email.
+        </Notice>
+      ) : linkError === "link" ? (
+        <Notice tone="warning" title="That reset link has expired or was already used.">
+          Send a new one below.
+        </Notice>
+      ) : null}
       <Field label="Email" htmlFor="email">
         <Input id="email" name="email" type="email" autoComplete="email" required disabled={disabled} />
       </Field>

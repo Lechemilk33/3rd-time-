@@ -11,7 +11,7 @@ export default function LoginPage() {
   return (
     <>
       <h1 className="text-3xl font-semibold text-ink">Welcome back! 🐾</h1>
-      <p className="mt-2 mb-8 text-ink-600">Log in to your client portal.</p>
+      <p className="mt-2 mb-8 text-ink-600">Log in to your account.</p>
       {configured ? null : <SetupNotice />}
       <Suspense fallback={<AuthFormSkeleton />}>
         <LoginForm disabled={!configured} />
