@@ -457,6 +457,7 @@ const WINDOW_VISIT = {
   handoff_options: [] as Handoff[],
   pickup_fee_cents: null,
   bring_details: null,
+  shared: false,
 } as const;
 
 export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
@@ -479,6 +480,7 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
       { minutes: 30, price_cents: 2500 },
       { minutes: 60, price_cents: 4000 },
     ],
+    shared: true,
     position: 0,
   },
   {
@@ -501,6 +503,7 @@ export const DEFAULT_SERVICES: Omit<Service, "id">[] = [
       { minutes: 60, price_cents: null },
     ],
     handoff_options: ["pickup", "bring"],
+    shared: true,
     position: 1,
   },
   {

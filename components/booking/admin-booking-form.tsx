@@ -105,7 +105,7 @@ export function AdminBookingForm({
   const [note, setNote] = useState("");
   const [force, setForce] = useState(false);
   const [notify, setNotify] = useState(true);
-  const [availability, setAvailability] = useState<{ date: Ymd; rows: Availability[] } | null>(null);
+  const [availability, setAvailability] = useState<{ key: string; rows: Availability[] } | null>(null);
   const [serviceDays, setServiceDays] = useState<{ key: string; rows: DayAvailability[] } | null>(null);
   const [slots, setSlots] = useState<{ key: string; minutes: number[] } | null>(null);
   const [result, setResult] = useState<CreateBookingsResult | null>(null);
@@ -122,17 +122,6 @@ export function AdminBookingForm({
   const nights = kind === "stay" && isYmd(date) && isYmd(checkOut) ? diffDays(checkOut, date) : 0;
   const perBooking = service ? bookingQuestions(intakeFields, service.id) : [];
 
-  // Open spots for the chosen day.
-  useEffect(() => {
-    if (!isYmd(date)) return;
-    let cancelled = false;
-    getAdminAvailability(date, date).then((rows) => {
-      if (!cancelled) setAvailability({ date, rows });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [date]);
 
   // Spots per day for full-day / overnight services.
   const rangeEnd = kind === "stay" && isYmd(checkOut) && checkOut > date ? addDays(checkOut, -1) : date;
@@ -150,13 +139,29 @@ export function AdminBookingForm({
   }, [daysKey]);
   const dayRows = serviceDays && serviceDays.key === daysKey ? serviceDays.rows : null;
 
+  // Which arrival windows still have room that day, for this service, length and number of pups.
+  const pupCount = Math.max(1, petIds.length);
+  const availKey = kind === "window" && service && isYmd(date) ? `${service.id}:${date}:${length ?? ""}:${pupCount}` : null;
+  useEffect(() => {
+    if (!availKey) return;
+    const [id, d, len, n] = availKey.split(":");
+    let cancelled = false;
+    getAdminAvailability(d, d, { serviceId: id, minutes: len ? Number(len) : null, pets: Number(n) }).then((rows) => {
+      if (!cancelled) setAvailability({ key: availKey, rows });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [availKey]);
+  const availRows = availability && availability.key === availKey ? availability.rows : null;
+
   // Open start times for set-time services.
-  const slotsKey = kind === "time" && service && isYmd(date) ? `${service.id}:${date}:${length ?? ""}` : null;
+  const slotsKey = kind === "time" && service && isYmd(date) ? `${service.id}:${date}:${length ?? ""}:${pupCount}` : null;
   useEffect(() => {
     if (!slotsKey) return;
-    const [id, d, len] = slotsKey.split(":");
+    const [id, d, len, n] = slotsKey.split(":");
     let cancelled = false;
-    getAdminTimeSlots(id, d, len ? Number(len) : null).then((rows) => {
+    getAdminTimeSlots(id, d, len ? Number(len) : null, Number(n)).then((rows) => {
       if (!cancelled) setSlots({ key: slotsKey, minutes: rows.map((r) => r.minute) });
     });
     return () => {
@@ -278,7 +283,7 @@ export function AdminBookingForm({
     );
   }
 
-  const availFor = (wId: string) => (availability?.date === date ? availability.rows.find((r) => r.window_id === wId) : undefined);
+  const availFor = (wId: string) => availRows?.find((r) => r.window_id === wId);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -510,7 +515,7 @@ export function AdminBookingForm({
                             !a ? "text-ink-400" : a.remaining > 0 ? "text-emerald-700" : "text-red-700",
                           )}
                         >
-                          {availability?.date !== date ? "Checking…" : !a ? "Closed" : a.remaining > 0 ? `${a.remaining} of ${a.capacity} open` : "Full"}
+                          {availRows === null ? "Checking…" : !a ? "Outside your hours" : a.remaining > 0 ? "Has room" : "Full"}
                         </span>
                       </button>
                     );

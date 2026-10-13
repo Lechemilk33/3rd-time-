@@ -215,6 +215,7 @@ function ServiceCard({
                 <Badge tone="sea">{service.confirmation === "request" ? "Book on request" : "Book online"}</Badge>
               ) : null}
               {service.allow_online_payment ? <Badge tone="green">Pay online</Badge> : null}
+              {service.shared && (service.kind === "window" || service.kind === "time") ? <Badge tone="sun">Group</Badge> : null}
             </span>
             <span className="block text-sm text-ink-600">{summary(service)}</span>
           </span>
@@ -361,6 +362,23 @@ function ServiceCard({
                 basePrice={cents(price)}
                 onChange={(options) => set("duration_options", options)}
               />
+            ) : null}
+            {kind === "window" || kind === "time" ? (
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-ink-100 p-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-5 shrink-0 accent-ocean"
+                  checked={draft.shared}
+                  onChange={(e) => set("shared", e.target.checked)}
+                />
+                <span>
+                  <span className="block font-bold">Group visit</span>
+                  <span className="block text-sm text-ink-600">
+                    Other dogs can come along at the same time, up to the “dogs at once” set in Schedule. Leave off when the
+                    visit needs the walker to themselves, like drop-ins.
+                  </span>
+                </span>
+              </label>
             ) : null}
           </fieldset>
 

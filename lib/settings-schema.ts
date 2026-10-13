@@ -26,7 +26,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   },
   {
     title: "Header button",
-    description: "The big button at the top of every page. Availability and booking rules live in Schedule & availability.",
+    description: "The big button at the top of every page. Hours and booking rules live in Schedule.",
     fields: [
       { key: "headerCtaLabel", label: "Button text", type: "text" },
       { key: "headerCtaHref", label: "Button link", type: "url", placeholder: "/book" },

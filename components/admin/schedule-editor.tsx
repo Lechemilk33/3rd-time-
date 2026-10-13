@@ -1,15 +1,13 @@
 "use client";
 
-import { CalendarOff, Check, Copy, Eraser, Link2, Mail, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarOff, Check, Link2, Mail, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   addTimeOff,
   deleteTimeOff,
   deleteWindow,
   resetCalendarFeed,
-  saveAvailability,
   saveBookingRules,
-  saveWalker,
   saveWindow,
   sendTestEmail,
   type RulesInput,
@@ -19,14 +17,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/form";
-import { Notice } from "@/components/ui/notice";
-import { windowRange, type BookingSettings, type BookingWindow, type Walker } from "@/lib/booking";
+import type { BookingSettings, BookingWindow, Walker } from "@/lib/booking";
 import { minuteLabel, minutesToTimeInput, shortDate, timeToMinutes, type Ymd } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const SWATCHES = ["#1A6FA0", "#F2711C", "#0E9F6E", "#7C3AED", "#DB2777", "#0891B2", "#CA8A04", "#475569"];
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -51,7 +45,7 @@ function Result({ result }: { result: ActionResult | null }) {
   );
 }
 
-function Toggle({ checked, onChange, label, help }: { checked: boolean; onChange: (v: boolean) => void; label: string; help?: string }) {
+export function Toggle({ checked, onChange, label, help }: { checked: boolean; onChange: (v: boolean) => void; label: string; help?: string }) {
   return (
     <label className="flex cursor-pointer items-start gap-3">
       <input type="checkbox" className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
@@ -152,9 +146,10 @@ export function WindowsEditor({ windows }: { windows: BookingWindow[] }) {
   return (
     <Card className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Arrival windows</h2>
+        <h2 className="text-xl font-semibold">Time-of-day choices</h2>
         <p className="text-sm text-ink-600">
-          Clients pick one of these when they book. You can pin an exact arrival time later from the calendar.
+          Clients booking a walk or drop-in pick one of these, and the visit is fit into the walker’s hours inside it. You can
+          pin an exact time from the calendar.
         </p>
       </div>
       <ul className="space-y-2">
@@ -167,7 +162,7 @@ export function WindowsEditor({ windows }: { windows: BookingWindow[] }) {
         <WindowRow window={null} onDone={() => setAdding(false)} />
       ) : (
         <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-          <Plus className="size-4" aria-hidden /> Add a window
+          <Plus className="size-4" aria-hidden /> Add a choice
         </Button>
       )}
     </Card>
@@ -249,216 +244,6 @@ function WindowRow({
 }
 
 // ---------------------------------------------------------------------------------------------
-// Walkers + weekly availability
-// ---------------------------------------------------------------------------------------------
-
-export function WalkersEditor({
-  walkers,
-  windows,
-  availability,
-}: {
-  walkers: Walker[];
-  windows: BookingWindow[];
-  availability: { walker_id: string; weekday: number; window_id: string; capacity: number }[];
-}) {
-  const [selected, setSelected] = useState(walkers[0]?.profile_id ?? "");
-  const walker = walkers.find((w) => w.profile_id === selected);
-  if (!walkers.length) {
-    return (
-      <Card>
-        <h2 className="text-xl font-semibold">Walkers</h2>
-        <p className="mt-2 text-ink-600">Every admin becomes a walker automatically. Make someone an admin from their client profile.</p>
-      </Card>
-    );
-  }
-  return (
-    <Card className="space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold">Walkers &amp; weekly availability</h2>
-        <p className="text-sm text-ink-600">
-          How many visits each walker can take in each window. 0 = not working. Clients only see times with an open spot.
-        </p>
-      </div>
-      <div role="tablist" className="flex flex-wrap gap-2">
-        {walkers.map((w) => (
-          <button
-            key={w.profile_id}
-            type="button"
-            role="tab"
-            aria-selected={w.profile_id === selected}
-            onClick={() => setSelected(w.profile_id)}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 font-bold transition",
-              w.profile_id === selected ? "border-ink bg-ink text-white" : "border-ink-100 bg-white hover:border-ink-200",
-            )}
-          >
-            <span className="size-3 rounded-full ring-2 ring-white" style={{ background: w.color }} aria-hidden />
-            {w.display_name}
-            {!w.active ? <span className="text-xs opacity-70">(off)</span> : null}
-          </button>
-        ))}
-      </div>
-      {/* Every panel stays mounted (just hidden) so switching tabs doesn't throw away unsaved changes. */}
-      {walkers.map((w) => (
-        <div key={w.profile_id} hidden={w.profile_id !== walker?.profile_id}>
-          <WalkerPanel
-            walker={w}
-            windows={windows.filter((x) => x.active)}
-            availability={availability.filter((a) => a.walker_id === w.profile_id)}
-          />
-        </div>
-      ))}
-    </Card>
-  );
-}
-
-function WalkerPanel({
-  walker,
-  windows,
-  availability,
-}: {
-  walker: Walker;
-  windows: BookingWindow[];
-  availability: { weekday: number; window_id: string; capacity: number }[];
-}) {
-  const [name, setName] = useState(walker.display_name);
-  const [color, setColor] = useState(walker.color);
-  const [active, setActive] = useState(walker.active);
-  const profile = useAction();
-  const grid = useAction();
-  const key = (d: number, w: string) => `${d}:${w}`;
-  const initial = Object.fromEntries(availability.map((a) => [key(a.weekday, a.window_id), a.capacity]));
-  const [cells, setCells] = useState<Record<string, number>>(initial);
-  const get = (d: number, w: string) => cells[key(d, w)] ?? 0;
-  const set = (d: number, w: string, v: number) => setCells((c) => ({ ...c, [key(d, w)]: Math.max(0, Math.min(50, v)) }));
-  const gridDirty = windows.some((w) => [1, 2, 3, 4, 5, 6, 7].some((d) => get(d, w.id) !== (initial[key(d, w.id)] ?? 0)));
-  const weekTotal = windows.reduce((sum, w) => sum + [1, 2, 3, 4, 5, 6, 7].reduce((s, d) => s + get(d, w.id), 0), 0);
-
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="Name clients see" htmlFor={`wk-name-${walker.profile_id}`} className="min-w-40 flex-1">
-            <Input id={`wk-name-${walker.profile_id}`} value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <div>
-            <p className="mb-1.5 text-sm font-bold">Calendar color</p>
-            <div className="flex flex-wrap gap-1.5">
-              {SWATCHES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  aria-label={`Color ${c}`}
-                  aria-pressed={color.toLowerCase() === c.toLowerCase()}
-                  className={cn("size-8 rounded-full transition", color.toLowerCase() === c.toLowerCase() ? "ring-4 ring-sea-200" : "hover:scale-110")}
-                  style={{ background: c }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-        <Toggle checked={active} onChange={setActive} label="Takes client bookings" />
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={profile.pending || (name === walker.display_name && color === walker.color && active === walker.active)}
-          onClick={() => profile.run(() => saveWalker({ profile_id: walker.profile_id, display_name: name, color, active }))}
-        >
-          Save walker
-        </Button>
-        <Result result={profile.result} />
-      </div>
-
-      {windows.length ? (
-        <div className="space-y-3">
-          <div className="overflow-x-auto rounded-2xl border border-ink-100">
-            <table className="w-full min-w-[620px] border-collapse text-center">
-              <thead>
-                <tr className="bg-sea-50">
-                  <th className="px-3 py-2 text-left text-xs font-extrabold tracking-wider text-ink-400 uppercase">Window</th>
-                  {WEEKDAYS.map((d) => (
-                    <th key={d} className="px-1 py-2 text-xs font-extrabold tracking-wider text-ink-600 uppercase">
-                      {d}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {windows.map((w) => (
-                  <tr key={w.id} className="border-t border-ink-100">
-                    <th scope="row" className="px-3 py-2 text-left">
-                      <span className="block font-extrabold">{w.label}</span>
-                      <span className="block text-xs font-semibold text-ink-400">{windowRange(w)}</span>
-                    </th>
-                    {[1, 2, 3, 4, 5, 6, 7].map((d) => {
-                      const v = get(d, w.id);
-                      return (
-                        <td key={d} className="px-1 py-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={50}
-                            value={v}
-                            aria-label={`${w.label} ${WEEKDAYS[d - 1]} visits`}
-                            onChange={(e) => set(d, w.id, Number(e.target.value))}
-                            onFocus={(e) => e.target.select()}
-                            className={cn(
-                              "h-11 w-14 rounded-xl border-2 text-center text-base font-extrabold transition focus:border-ocean focus:ring-4 focus:ring-sea-100 focus:outline-none",
-                              v > 0 ? "border-transparent bg-sea-100 text-ink" : "border-ink-100 bg-white text-ink-400",
-                            )}
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" disabled={grid.pending || !gridDirty} onClick={() =>
-              grid.run(() =>
-                saveAvailability(
-                  walker.profile_id,
-                  windows.flatMap((w) => [1, 2, 3, 4, 5, 6, 7].map((d) => ({ weekday: d, window_id: w.id, capacity: get(d, w.id) }))),
-                ),
-              )
-            }>
-              Save availability
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                const next = { ...cells };
-                for (const w of windows) for (const d of [2, 3, 4, 5]) next[key(d, w.id)] = get(1, w.id);
-                setCells(next);
-              }}
-            >
-              <Copy className="size-4" aria-hidden /> Copy Monday to Tue–Fri
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setCells(Object.fromEntries(windows.flatMap((w) => [1, 2, 3, 4, 5, 6, 7].map((d) => [key(d, w.id), 0]))))}
-            >
-              <Eraser className="size-4" aria-hidden /> Clear
-            </Button>
-            <span className="text-sm font-bold text-ink-400">{weekTotal} visits a week</span>
-            <Result result={grid.result} />
-          </div>
-        </div>
-      ) : (
-        <Notice>Add an arrival window first.</Notice>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------------------------
 // Time off
 // ---------------------------------------------------------------------------------------------
 
@@ -484,8 +269,10 @@ export function TimeOffEditor({
   return (
     <Card className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold">Time off &amp; holidays</h2>
-        <p className="text-sm text-ink-600">Block days for one walker or the whole business. Existing visits aren’t touched.</p>
+        <h2 className="text-xl font-semibold">Days off &amp; holidays</h2>
+        <p className="text-sm text-ink-600">
+          Block dates for one walker or the whole business. Clients can’t book then; visits already booked stay put.
+        </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
         <Field label="Who" htmlFor="to-who">

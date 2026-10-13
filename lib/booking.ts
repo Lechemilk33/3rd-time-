@@ -34,6 +34,20 @@ export type BookingSettings = {
   reply_to: string;
 };
 
+/** A block of a walker's weekly working hours (ISO weekday: 1 = Monday). */
+export type HoursBlock = {
+  id: string;
+  walker_id: string;
+  weekday: number;
+  start_minute: number;
+  end_minute: number;
+  /** How many dogs the walker can have out at once. */
+  dogs: number;
+  label: string | null;
+  /** Only these services can be booked in the block (null = any). */
+  service_ids: string[] | null;
+};
+
 export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   booking_enabled: true,
   timezone: "America/Los_Angeles",
@@ -80,7 +94,11 @@ export type BookingDetail = Booking & {
     Pick<Service, "duration_options" | "handoff_options" | "pickup_fee_cents" | "bring_details">) | null;
 };
 
-export type Availability = { service_date: Ymd; window_id: string; capacity: number; remaining: number };
+/**
+ * booking_availability(): window services get a row per arrival window, set-time services one row per day
+ * (window_id null). remaining is 1 when it still fits and 0 when it's full; closed times have no row.
+ */
+export type Availability = { service_date: Ymd; window_id: string | null; capacity: number; remaining: number };
 
 export type DayAvailability = { service_date: Ymd; capacity: number; remaining: number };
 
@@ -279,14 +297,15 @@ export function windowRange(w: Pick<BookingWindow, "start_minute" | "end_minute"
   return minuteRange(w.start_minute, w.end_minute);
 }
 
-/** Minute of day a visit starts on the calendar: the pinned arrival, else the window start. */
+/** Minute of day a visit starts on the calendar: the pinned arrival, else its planned spot, else the window start. */
 export function visitStartMinute(
-  b: Pick<Booking, "arrival_time" | "window_id">,
+  b: Pick<Booking, "arrival_time" | "window_id"> & Partial<Pick<Booking, "planned_minute">>,
   windows: Map<string, BookingWindow>,
   fallback = 9 * 60,
 ): number {
   const pinned = timeToMinutes(b.arrival_time);
   if (pinned != null) return pinned;
+  if (b.planned_minute != null) return b.planned_minute;
   const w = b.window_id ? windows.get(b.window_id) : undefined;
   return w ? w.start_minute : fallback;
 }
@@ -345,7 +364,7 @@ export function initials(name: string) {
 /** Supabase select for a booking with client, pups and service. */
 export const BOOKING_DETAIL_SELECT = `
   id, user_id, service_id, title, kind, start_time, end_time, status, source, service_date, end_date,
-  window_id, arrival_time, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason, handoff,
+  window_id, arrival_time, planned_minute, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason, handoff,
   invitee_name, invitee_email, created_at, updated_at,
   client:profiles!bookings_user_id_fkey (id, full_name, email, phone, address, access_notes,
     emergency_contact_name, emergency_contact_phone, booking_approved),

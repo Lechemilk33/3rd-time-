@@ -171,8 +171,14 @@ function VisitCard({
           ),
         );
       }
-    } else if (!availability) {
-      getAvailability(today, addDays(today, maxDaysAhead)).then(setAvailability);
+    } else if (!availability && service) {
+      // Its own spot counts as free while moving it.
+      getAvailability(today, addDays(today, maxDaysAhead), {
+        serviceId: service.id,
+        minutes: v.duration_minutes,
+        pets: Math.max(1, v.pets.length),
+        exclude: v.id,
+      }).then(setAvailability);
     }
   }
 
@@ -350,6 +356,8 @@ function VisitCard({
             <TimeSlotPicker
               serviceId={service.id}
               length={v.duration_minutes}
+              pets={Math.max(1, v.pets.length)}
+              exclude={v.id}
               openDays={new Set((availability ?? []).filter((a) => a.remaining > 0).map((a) => a.service_date))}
               today={today}
               lastDay={addDays(today, maxDaysAhead)}

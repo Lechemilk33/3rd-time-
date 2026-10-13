@@ -93,10 +93,16 @@ Booking is built in — no third-party scheduler.
   window visits and appointments can repeat weekly. New clients can only book services marked
   “Anyone with an account” (the Meet & Greet); everything else unlocks once an admin approves them
   (toggle on the client’s profile, or approve their intake form).
-- **Capacity:** in **Admin → Schedule & availability** each walker sets how many visits they can
-  take per window per weekday, plus time off. Bookings are checked and assigned atomically in the
-  database (`book_visits`), so two people can never take the last spot. Clients keep the walker
-  they know when possible.
+- **Hours:** in **Admin → Schedule** each walker draws the hours they work on a weekly calendar
+  (drag to add, drag to move or resize, click to edit) and sets how many dogs they can have out at
+  once in each block, e.g. 4 for a Saturday park run. A block can be limited to certain services.
+  Services marked **Group visit** (walks, park trips) share the walker's time up to that limit;
+  everything else (drop-ins, meet & greets) gets the walker to themselves. A family's dogs always
+  go together. Arrival-window visits are slotted at the earliest spot that fits
+  (`bookings.planned_minute`), so the calendar shows real load and clients still see their window.
+  Days off block dates for one walker or everyone. Bookings are checked and assigned atomically in
+  the database (`book_visits`), so two people can never take the last spot. Clients keep the
+  walker they know when possible.
 - **Calendar:** **Admin → Calendar** shows every booking color-coded by walker. Full days and
   stays sit in an all-day lane (bars across the week, or across the month) and in the agenda as
   check-in / night N / check-out. Hover for details, click for the full card (client, pups,
@@ -117,7 +123,7 @@ Booking is built in — no third-party scheduler.
   select vault.create_secret('re_…', 'resend_api_key', 'Resend key for booking emails');
   ```
 
-  Reminders run from a `pg_cron` job every hour. Use **Send a test** in Schedule & availability to
+  Reminders run from a `pg_cron` job every hour. Use **Send a test** in Schedule to
   check delivery.
 - **Intake & booking questions:** one intake form for everyone; in **Admin → Intake & questions**
   each service has its own tab. A service’s questions are asked either **once** (on the intake
@@ -148,7 +154,7 @@ amount always comes from the service's price in the database.
 | Gallery                    | `gallery_photos` + Supabase Storage (`media/gallery/…`)   |
 | Intake form questions      | `forms` (JSON field list); answers in `form_submissions`  |
 | Booking rules & windows    | `booking_settings`, `booking_windows`                     |
-| Walkers & availability     | `walkers`, `walker_availability`, `time_off`              |
+| Walkers & hours            | `walkers`, `walker_hours`, `time_off`                     |
 | Visits                     | `bookings` + `booking_pets`                               |
 
 Public pages are cached with `"use cache"` and tagged `site-content`. Every admin save calls

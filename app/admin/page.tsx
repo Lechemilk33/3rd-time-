@@ -44,7 +44,7 @@ export default async function AdminHome() {
       .order("start_time")
       .limit(6),
     supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "requested").gte("service_date", today),
-    supabase.from("walker_availability").select("walker_id", { count: "exact", head: true }).gt("capacity", 0),
+    supabase.from("walker_hours").select("id", { count: "exact", head: true }),
     supabase.rpc("email_status"),
     getSiteSettings(),
   ]);
@@ -65,7 +65,7 @@ export default async function AdminHome() {
   const setup = [
     { done: seeded, label: "Load your editable website content", href: "/admin" },
     { done: Boolean(settings.phone || settings.email), label: "Add your phone or email", href: "/admin/settings" },
-    { done: (capacityRes.count ?? 0) > 0, label: "Set your walkers’ weekly availability", href: "/admin/schedule" },
+    { done: (capacityRes.count ?? 0) > 0, label: "Set your weekly hours", href: "/admin/schedule" },
     { done: Boolean(emailRes.data), label: "Booking emails connected", href: "/admin/schedule" },
     { done: isStripeConfigured(), label: "Connect Stripe for online payments", href: "/admin/integrations" },
   ];

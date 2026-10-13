@@ -101,12 +101,10 @@ export function DateWindowPicker({
                               ? "bg-ink-100 text-ink-400"
                               : a.remaining === 0
                                 ? "bg-ink-100 text-ink-600"
-                                : a.remaining <= 2
-                                  ? "bg-sun-100 text-ink"
-                                  : "bg-emerald-50 text-emerald-700",
+                                : "bg-emerald-50 text-emerald-700",
                         )}
                       >
-                        {taken ? "Already booked" : !a ? "Unavailable" : a.remaining === 0 ? "Full" : a.remaining <= 2 ? `${a.remaining} left` : "Open"}
+                        {taken ? "Already booked" : !a ? "Unavailable" : a.remaining === 0 ? "Full" : "Open"}
                       </span>
                     </button>
                   );

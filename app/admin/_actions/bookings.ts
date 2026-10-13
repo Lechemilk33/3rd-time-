@@ -1,7 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { handoffOrNull, lengthOrNull, type DayAvailability } from "@/lib/booking";
+import { handoffOrNull, lengthOrNull, type Availability, type DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
@@ -198,16 +198,32 @@ export async function getAdminTimeSlots(
   serviceId: string,
   date: string,
   minutes?: number | null,
-): Promise<{ minute: number; window_id: string }[]> {
+  pets?: number,
+): Promise<{ minute: number; window_id: string | null }[]> {
   if (!UUID.test(serviceId) || !isYmd(date)) return [];
   const supabase = await adminClient();
-  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date, p_duration: lengthOrNull(minutes) });
-  return (data ?? []) as { minute: number; window_id: string }[];
+  const { data } = await supabase.rpc("time_slots", {
+    p_service_id: serviceId,
+    p_date: date,
+    p_duration: lengthOrNull(minutes),
+    p_pets: pets && pets > 0 ? Math.min(10, Math.round(pets)) : null,
+  });
+  return (data ?? []) as { minute: number; window_id: string | null }[];
 }
 
-export async function getAdminAvailability(from: string, to: string) {
-  if (!isYmd(from) || !isYmd(to)) return [];
+export async function getAdminAvailability(
+  from: string,
+  to: string,
+  opts: { serviceId: string; minutes?: number | null; pets?: number },
+): Promise<Availability[]> {
+  if (!isYmd(from) || !isYmd(to) || !UUID.test(opts.serviceId)) return [];
   const supabase = await adminClient();
-  const { data } = await supabase.rpc("booking_availability", { p_from: from, p_to: to });
-  return (data ?? []) as { service_date: string; window_id: string; capacity: number; remaining: number }[];
+  const { data } = await supabase.rpc("booking_availability", {
+    p_from: from,
+    p_to: to,
+    p_service_id: opts.serviceId,
+    p_duration: lengthOrNull(opts.minutes),
+    p_pets: opts.pets && opts.pets > 0 ? Math.min(10, Math.round(opts.pets)) : null,
+  });
+  return (data ?? []) as Availability[];
 }

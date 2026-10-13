@@ -93,6 +93,8 @@ export type Service = {
   pickup_fee_cents: number | null;
   /** Where/when clients bring their pup, shown when they choose that. */
   bring_details: string | null;
+  /** Group visit: other dogs can be out with the walker at the same time (walks, park trips). */
+  shared: boolean;
 };
 
 export type ServiceKind = "window" | "time" | "day" | "stay";
@@ -215,6 +217,8 @@ export type Booking = {
   window_id: string | null;
   /** "HH:MM:SS" local time an admin pinned, if any. */
   arrival_time: string | null;
+  /** Window visits: where the scheduler fit the visit into the walker's hours (minutes after midnight). */
+  planned_minute: number | null;
   duration_minutes: number;
   walker_id: string | null;
   series_id: string | null;

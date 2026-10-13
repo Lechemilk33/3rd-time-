@@ -112,7 +112,7 @@ export function BookingWizard({
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [weeks, setWeeks] = useState(4);
   const [note, setNote] = useState("");
-  const [availability, setAvailability] = useState<Availability[] | null>(null);
+  const [openings, setOpenings] = useState<{ key: string; rows: Availability[] } | null>(null);
   const [serviceDays, setServiceDays] = useState<{ id: string; rows: DayAvailability[] } | null>(null);
   const [result, setResult] = useState<BookResult | null>(null);
   const [pending, start] = useTransition();
@@ -126,15 +126,21 @@ export function BookingWizard({
   const lastStart = addDays(today, settings.max_days_ahead);
   const ranged = kind === "day" || kind === "stay";
 
+  // What's open depends on the service, the length and how many pups are coming.
+  const timedId = service && (service.kind === "window" || service.kind === "time") ? service.id : null;
+  const pupCount = Math.max(1, petIds.length);
+  const openingsKey = timedId ? `${timedId}:${minutes ?? ""}:${pupCount}:${today}:${lastStart}:${reload}` : null;
+  const availability = openings && openings.key === openingsKey ? openings.rows : null;
   useEffect(() => {
+    if (!timedId || !openingsKey) return;
     let cancelled = false;
-    getAvailability(today, lastStart).then((rows) => {
-      if (!cancelled) setAvailability(rows);
+    getAvailability(today, lastStart, { serviceId: timedId, minutes, pets: pupCount }).then((rows) => {
+      if (!cancelled) setOpenings({ key: openingsKey, rows });
     });
     return () => {
       cancelled = true;
     };
-  }, [today, lastStart, reload]);
+  }, [timedId, openingsKey, today, lastStart, minutes, pupCount]);
 
   const rangedId = service && (service.kind === "day" || service.kind === "stay") ? service.id : null;
   const rangeTo = service?.kind === "stay" ? addDays(lastStart, service.max_nights) : lastStart;
@@ -468,6 +474,7 @@ export function BookingWizard({
                 key={reload}
                 serviceId={service.id}
                 length={lengths.length ? minutes : null}
+                pets={pupCount}
                 openDays={openDays}
                 today={today}
                 lastDay={lastStart}

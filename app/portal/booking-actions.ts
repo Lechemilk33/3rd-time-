@@ -12,12 +12,34 @@ import type { ActionResult, FormAnswers, Handoff } from "@/lib/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function getAvailability(from: string, to: string): Promise<Availability[]> {
+export type OpeningsFor = {
+  serviceId: string;
+  /** The length picked, for services with a choice. */
+  minutes?: number | null;
+  /** How many pups are coming (group visits share the walker's time by the dog). */
+  pets?: number;
+  /** A visit being moved: its own spot counts as free. */
+  exclude?: string | null;
+};
+
+/** What's still open for a service: per arrival window, or per day for set-time services. */
+export async function getAvailability(from: string, to: string, opts: OpeningsFor): Promise<Availability[]> {
   await requireUser();
-  if (!isYmd(from) || !isYmd(to)) return [];
+  if (!isYmd(from) || !isYmd(to) || !UUID.test(opts.serviceId)) return [];
   const supabase = await createClient();
-  const { data } = await supabase.rpc("booking_availability", { p_from: from, p_to: to });
+  const { data } = await supabase.rpc("booking_availability", openingsArgs(from, to, opts));
   return (data ?? []) as Availability[];
+}
+
+function openingsArgs(from: string, to: string, opts: OpeningsFor) {
+  return {
+    p_from: from,
+    p_to: to,
+    p_service_id: opts.serviceId,
+    p_duration: lengthOrNull(opts.minutes),
+    p_pets: opts.pets && opts.pets > 0 ? Math.min(10, Math.round(opts.pets)) : null,
+    p_exclude: opts.exclude && UUID.test(opts.exclude) ? opts.exclude : null,
+  };
 }
 
 /** Full-day and overnight services: open spots per day. */
@@ -34,12 +56,15 @@ export async function getTimeSlots(
   serviceId: string,
   date: string,
   minutes?: number | null,
-): Promise<{ minute: number; window_id: string }[]> {
+  pets?: number,
+  exclude?: string | null,
+): Promise<{ minute: number; window_id: string | null }[]> {
   await requireUser();
   if (!UUID.test(serviceId) || !isYmd(date)) return [];
   const supabase = await createClient();
-  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date, p_duration: lengthOrNull(minutes) });
-  return (data ?? []) as { minute: number; window_id: string }[];
+  const { p_duration, p_pets, p_exclude } = openingsArgs(date, date, { serviceId, minutes, pets, exclude });
+  const { data } = await supabase.rpc("time_slots", { p_service_id: serviceId, p_date: date, p_duration, p_pets, p_exclude });
+  return (data ?? []) as { minute: number; window_id: string | null }[];
 }
 
 export type BookResult = ActionResult & {

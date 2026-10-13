@@ -76,6 +76,7 @@ function cleanService(input: ServiceInput): ServiceInput {
     audience: input.audience === "everyone" ? "everyone" : "approved",
     confirmation: input.confirmation === "request" ? "request" : "instant",
     max_pets: int(input.max_pets, 1, 10, 3)!,
+    shared: !ranged && Boolean(input.shared),
     kind,
     daily_capacity: ranged ? int(input.daily_capacity, 1, 100, null) : null,
     start_minute: ranged ? int(input.start_minute, 0, 1439, null) : null,

@@ -96,19 +96,66 @@ export async function saveWalker(input: WalkerInput): Promise<ActionResult> {
   return { ok: true, message: "Saved." };
 }
 
-export async function saveAvailability(
-  walkerId: string,
-  cells: { weekday: number; window_id: string; capacity: number }[],
-): Promise<ActionResult> {
-  if (!UUID.test(walkerId)) return { ok: false, error: "Not found." };
+export type HoursInput = {
+  id: string;
+  walker_id: string;
+  weekday: number;
+  start_minute: number;
+  end_minute: number;
+  dogs: number;
+  label: string | null;
+  service_ids: string[] | null;
+};
+
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** Replaces every walker's weekly hours with what's on the editor. */
+export async function saveHours(blocks: HoursInput[]): Promise<ActionResult> {
+  if (!Array.isArray(blocks) || blocks.length > 500) return { ok: false, error: "That’s more hours than we can save at once." };
+  const rows: HoursInput[] = [];
+  for (const b of blocks) {
+    if (!UUID.test(b.id) || !UUID.test(b.walker_id)) return { ok: false, error: "Something didn’t look right. Reload the page and try again." };
+    const weekday = int(b.weekday, 1, 7, 1);
+    const start = int(b.start_minute, 0, 1425, 0);
+    const end = int(b.end_minute, 15, 1440, 60);
+    if (start % 15 || end % 15) return { ok: false, error: "Hours go in 15-minute steps." };
+    if (end <= start) return { ok: false, error: `A block on ${DAY_NAMES[weekday - 1]} ends before it starts.` };
+    const services = Array.isArray(b.service_ids) ? [...new Set(b.service_ids.filter((id) => UUID.test(id)))] : null;
+    if (services && !services.length) {
+      return { ok: false, error: `Pick at least one service for the ${DAY_NAMES[weekday - 1]} block, or open it to any service.` };
+    }
+    rows.push({
+      id: b.id,
+      walker_id: b.walker_id,
+      weekday,
+      start_minute: start,
+      end_minute: end,
+      dogs: int(b.dogs, 1, 20, 1),
+      label: clampText(b.label ?? "", 40).trim() || null,
+      service_ids: services,
+    });
+  }
+  const sorted = [...rows].sort((a, b) => a.walker_id.localeCompare(b.walker_id) || a.weekday - b.weekday || a.start_minute - b.start_minute);
+  for (let i = 1; i < sorted.length; i++) {
+    const [a, b] = [sorted[i - 1], sorted[i]];
+    if (a.walker_id === b.walker_id && a.weekday === b.weekday && b.start_minute < a.end_minute) {
+      return { ok: false, error: `Two blocks overlap on ${DAY_NAMES[b.weekday - 1]}. Adjust one so they don’t.` };
+    }
+  }
+
   const supabase = await adminClient();
-  const rows = cells
-    .filter((c) => UUID.test(c.window_id) && c.weekday >= 1 && c.weekday <= 7)
-    .map((c) => ({ walker_id: walkerId, weekday: c.weekday, window_id: c.window_id, capacity: int(c.capacity, 0, 50, 0) }));
-  const { error } = await supabase.from("walker_availability").upsert(rows, { onConflict: "walker_id,weekday,window_id" });
+  if (rows.length) {
+    const { error } = await supabase.from("walker_hours").upsert(rows, { onConflict: "id" });
+    if (error) return { ok: false, error: rpcError(error) };
+  }
+  // Then clear whatever was taken off the calendar.
+  const stale = supabase.from("walker_hours").delete();
+  const { error } = rows.length
+    ? await stale.not("id", "in", `(${rows.map((r) => r.id).join(",")})`)
+    : await stale.not("walker_id", "is", null);
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
-  return { ok: true, message: "Availability saved." };
+  return { ok: true, message: "Hours saved. Clients see the new times right away." };
 }
 
 export type TimeOffInput = { walker_id: string | null; start_date: string; end_date: string; window_id: string | null; note: string };
