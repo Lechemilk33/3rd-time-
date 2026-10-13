@@ -2,13 +2,15 @@ import { Check } from "lucide-react";
 import { BeachScene } from "@/components/site/beach-scene";
 import { ButtonLink } from "@/components/ui/button";
 import { PawMark } from "@/components/ui/icons";
-import { Photo } from "@/components/ui/photo";
-import { str, strings } from "@/components/sections/helpers";
+import { HeroSlideshow } from "@/components/sections/hero-slideshow";
+import { num, str, strings } from "@/components/sections/helpers";
 import type { SectionData } from "@/lib/types";
 import { safeHref } from "@/lib/utils";
 
 export function HeroSection({ data }: { data: SectionData }) {
-  const image = str(data, "image");
+  // Photos (older pages saved a single "image").
+  const photos = Array.isArray(data.images) ? strings(data, "images") : [str(data, "image")].filter(Boolean);
+  const seconds = Math.min(15, Math.max(3, num(data, "seconds", 5)));
   const badges = strings(data, "badges");
 
   return (
@@ -57,11 +59,7 @@ export function HeroSection({ data }: { data: SectionData }) {
         <div className="relative mx-auto w-full max-w-xl">
           <div className="absolute -right-2 -bottom-2 h-full w-full rounded-[2.5rem] bg-sun sm:-right-4 sm:-bottom-4" aria-hidden />
           <div className="relative aspect-[4/3] overflow-hidden rounded-[2.5rem] border-4 border-white bg-sea-100 shadow-xl">
-            {image ? (
-              <Photo src={image} alt="" loading="eager" fetchPriority="high" className="h-full w-full" />
-            ) : (
-              <BeachScene />
-            )}
+            {photos.length ? <HeroSlideshow images={photos} seconds={seconds} /> : <BeachScene />}
           </div>
           <div className="animate-float absolute -bottom-5 -left-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-lg sm:-left-6">
             <span className="grid size-9 place-items-center rounded-full bg-sea-100">

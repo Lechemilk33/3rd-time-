@@ -10,7 +10,7 @@ type BaseField = { key: string; label: string; help?: string; placeholder?: stri
 
 export type FieldDef =
   | (BaseField & {
-      type: "text" | "textarea" | "url" | "image" | "number" | "boolean" | "color" | "strings";
+      type: "text" | "textarea" | "url" | "image" | "images" | "number" | "boolean" | "color" | "strings";
     })
   | (BaseField & { type: "select"; options: { value: string; label: string }[] })
   | (BaseField & { type: "list"; itemLabel: string; fields: FieldDef[] })
@@ -71,10 +71,21 @@ export const SECTION_TYPES: SectionTypeDef[] = [
       heading,
       { key: "subheading", label: "Subheading", type: "textarea" },
       {
-        key: "image",
-        label: "Photo",
-        type: "image",
-        help: "Leave empty to show the beach illustration.",
+        key: "images",
+        label: "Photos",
+        type: "images",
+        help: "Add as many as you like; they fade from one to the next. The first one shows first, the rest in a shuffled order. Leave empty for the beach illustration.",
+      },
+      {
+        key: "seconds",
+        label: "Switch photos every",
+        type: "select",
+        options: [
+          { value: "4", label: "4 seconds" },
+          { value: "5", label: "5 seconds" },
+          { value: "7", label: "7 seconds" },
+          { value: "10", label: "10 seconds" },
+        ],
       },
       { key: "primaryLabel", label: "Main button text", type: "text" },
       { key: "primaryHref", label: "Main button link", type: "url", placeholder: "/book" },
@@ -91,7 +102,8 @@ export const SECTION_TYPES: SectionTypeDef[] = [
       eyebrow: "Ocean Beach, San Diego",
       heading: "Your pup’s favorite part of the day",
       subheading: "Friendly, reliable dog walks and visits around OB.",
-      image: "",
+      images: [],
+      seconds: "5",
       primaryLabel: "Book a walk",
       primaryHref: "/book",
       secondaryLabel: "See services",

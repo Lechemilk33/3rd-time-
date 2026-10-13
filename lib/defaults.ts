@@ -81,7 +81,8 @@ export const DEFAULT_PAGES: DefaultPage[] = [
           heading: "Happy dogs. Salty paws. Zero worry.",
           subheading:
             "Friendly, reliable dog walks and pet visits for Ocean Beach pups — fresh air, good sniffs, and sunshine while you’re busy.",
-          image: "",
+          images: [],
+          seconds: "5",
           primaryLabel: "Book a walk",
           primaryHref: "/book",
           secondaryLabel: "Services & pricing",

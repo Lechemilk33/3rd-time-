@@ -1,8 +1,11 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ImagePlus, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ImageUpload } from "@/components/image-upload";
+import { Photo } from "@/components/ui/photo";
+import { uploadImage } from "@/lib/upload";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { FieldDef } from "@/lib/sections";
@@ -128,6 +131,8 @@ function SchemaField({
           <ImageUpload value={text} onChange={onChange} folder={imageFolder} />
         </Field>
       );
+    case "images":
+      return <ImagesField field={field} value={value} onChange={onChange} imageFolder={imageFolder} />;
     case "strings":
       return <StringsField id={id} field={field} value={value} onChange={onChange} />;
     case "group":
@@ -145,6 +150,149 @@ function SchemaField({
     case "list":
       return <ListField field={field} value={value} onChange={onChange} imageFolder={imageFolder} />;
   }
+}
+
+/** Several photos: upload many at once, drag (or use the arrows) to reorder, remove any. */
+function ImagesField({
+  field,
+  value,
+  onChange,
+  imageFolder,
+}: {
+  field: FieldDef;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  imageFolder: string;
+}) {
+  const urls = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
+  const [pending, setPending] = useState<{ key: string; preview: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Uploads finish later: add them to whatever the list is by then, not what it was when they started.
+  const latest = useRef({ urls, onChange });
+  useEffect(() => {
+    latest.current = { urls, onChange };
+  });
+
+  async function add(files: FileList | null) {
+    const list = [...(files ?? [])].filter((f) => f.type.startsWith("image/")).slice(0, 20);
+    if (!list.length) return;
+    setError(null);
+    const batch = list.map((f) => ({ key: crypto.randomUUID(), preview: URL.createObjectURL(f) }));
+    setPending((p) => [...p, ...batch]);
+    const results = await Promise.allSettled(list.map((f) => uploadImage(f, imageFolder, 1800)));
+    batch.forEach((b) => URL.revokeObjectURL(b.preview));
+    setPending((p) => p.filter((x) => !batch.some((b) => b.key === x.key)));
+    const done = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.url] : []));
+    if (done.length) latest.current.onChange([...latest.current.urls, ...done]);
+    const failed = results.length - done.length;
+    if (failed) setError(`${failed} photo${failed === 1 ? "" : "s"} didn’t upload. Try again.`);
+  }
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= urls.length || from === to) return;
+    const next = [...urls];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <p className="mb-1 text-sm font-bold">{field.label}</p>
+      {field.help ? <p className="mb-3 text-sm text-ink-600">{field.help}</p> : null}
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {urls.map((url, i) => (
+          <li
+            key={url}
+            draggable
+            onDragStart={() => setDragFrom(i)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragFrom != null) move(dragFrom, i);
+              setDragFrom(null);
+            }}
+            onDragEnd={() => setDragFrom(null)}
+            className={cn(
+              "group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl border-2 bg-sea-50",
+              dragFrom === i ? "border-ocean opacity-60" : "border-ink-100",
+            )}
+          >
+            <Photo src={url} alt={`Photo ${i + 1}`} className="h-full w-full" draggable={false} />
+            {i === 0 ? (
+              <span className="absolute top-2 left-2 rounded-full bg-sun px-2 py-0.5 text-[11px] font-extrabold">Shows first</span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onChange(urls.filter((_, j) => j !== i))}
+              aria-label={`Remove photo ${i + 1}`}
+              className="absolute top-1.5 right-1.5 grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-red-700"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+            <div className="absolute inset-x-1.5 bottom-1.5 flex justify-between">
+              <button
+                type="button"
+                onClick={() => move(i, i - 1)}
+                disabled={i === 0}
+                aria-label={`Move photo ${i + 1} earlier`}
+                className="grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-ink disabled:invisible"
+              >
+                <ArrowLeft className="size-4" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => move(i, i + 1)}
+                disabled={i === urls.length - 1}
+                aria-label={`Move photo ${i + 1} later`}
+                className="grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-ink disabled:invisible"
+              >
+                <ArrowRight className="size-4" aria-hidden />
+              </button>
+            </div>
+          </li>
+        ))}
+        {pending.map((p) => (
+          <li key={p.key} className="relative aspect-[4/3] overflow-hidden rounded-2xl border-2 border-ink-100 bg-sea-50">
+            <Photo src={p.preview} alt="" className="h-full w-full opacity-60" />
+            <span className="absolute inset-0 grid place-items-center">
+              <LoaderCircle className="size-7 animate-spin text-ocean" aria-label="Uploading" />
+            </span>
+          </li>
+        ))}
+        <li>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer.files.length) void add(e.dataTransfer.files);
+            }}
+            className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-sea-200 bg-sea-50/60 text-ink-600 transition hover:border-ocean hover:text-ocean"
+          >
+            <ImagePlus className="size-7" aria-hidden />
+            <span className="text-sm font-bold">{urls.length ? "Add more" : "Add photos"}</span>
+            <span className="text-xs">Pick several at once</span>
+          </button>
+        </li>
+      </ul>
+      {error ? <p className="mt-2 text-sm font-bold text-red-700">{error}</p> : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void add(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
 }
 
 function StringsField({
