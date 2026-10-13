@@ -7,6 +7,7 @@ import type { BookingPet } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { longDate, todayIn, type Ymd } from "@/lib/dates";
+import { isStripeConfigured } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import type { FormAnswers, Service } from "@/lib/types";
 
@@ -91,6 +92,7 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
           }}
           initialServiceId={typeof sp.service === "string" ? sp.service : null}
           booked={booked}
+          payOnline={isStripeConfigured()}
           details={
             user.isAdmin
               ? null

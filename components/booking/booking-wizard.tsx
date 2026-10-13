@@ -91,6 +91,7 @@ export function BookingWizard({
   initialServiceId,
   booked,
   details,
+  payOnline = false,
 }: {
   services: Service[];
   pets: BookingPet[];
@@ -104,6 +105,8 @@ export function BookingWizard({
   booked: Record<string, string[]>;
   /** The client's contact and home details, to ask for what a booking needs (null for admins). */
   details: ClientDetails | null;
+  /** Online payments are switched on (Stripe connected). */
+  payOnline?: boolean;
 }) {
   const bookable = services.filter((s) => s.bookable);
   const canBook = (s: Service) => approved || s.audience === "everyone";
@@ -294,6 +297,7 @@ export function BookingWizard({
         minutes={lengths.length ? minutes : null}
         handoff={handoff}
         onAnother={reset}
+        canPay={payOnline && service.allow_online_payment && Boolean(lengthPrice(service, minutes))}
       />
     );
   }
@@ -892,6 +896,7 @@ function BookedCard({
   minutes,
   handoff,
   onAnother,
+  canPay,
 }: {
   result: BookResult;
   service: Service;
@@ -902,6 +907,8 @@ function BookedCard({
   minutes: number | null;
   handoff: Handoff | null;
   onAnother: () => void;
+  /** Can be paid online now (confirmed, priced and the service takes online payment). */
+  canPay: boolean;
 }) {
   const requested = result.status === "requested";
   const created = result.created ?? [];
@@ -989,6 +996,14 @@ function BookedCard({
           <Notice tone="warning" className="text-left" title="Some dates were skipped">
             {result.skipped.map((s) => `${shortDate(s.date)} (${SKIP_REASONS[s.reason] ?? s.reason})`).join(" · ")}
           </Notice>
+        ) : null}
+        {canPay && !requested ? (
+          <p className="rounded-2xl bg-sand/60 px-4 py-3 text-sm text-ink-600">
+            Pay now or after the {noun}, whichever you like.{" "}
+            <Link href="/portal/payments" className="font-bold text-ocean hover:underline">
+              Pay now
+            </Link>
+          </p>
         ) : null}
         <div className="flex flex-wrap justify-center gap-3">
           <ButtonLink href="/portal/visits">View my visits</ButtonLink>

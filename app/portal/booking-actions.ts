@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { handoffOrNull, lengthOrNull, type Availability, type DayAvailability } from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { anyNeeded, detailsNeeded } from "@/lib/client-details";
+import { formatMoney } from "@/lib/format";
+import { refundVisits } from "@/lib/payments-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
 import { asksGeneral, bookingQuestions, fieldsForService, missingMessage, readAnswers, unansweredForService } from "@/lib/intake";
@@ -202,18 +204,48 @@ function listWords(items: string[]) {
 }
 
 export async function cancelVisit(id: string, scope: "one" | "following", reason: string): Promise<ActionResult> {
-  await requireUser();
+  const user = await requireUser();
   if (!UUID.test(id)) return { ok: false, error: "Visit not found." };
   const supabase = await createClient();
+
+  // Visits this will cancel that were paid by card: refunded once they're canceled.
+  const { data: visit } = await supabase.from("bookings").select("id, series_id, service_date").eq("id", id).maybeSingle();
+  let paid = supabase
+    .from("bookings")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("paid_via", "card")
+    .in("status", ["requested", "scheduled"]);
+  paid =
+    scope === "following" && visit?.series_id
+      ? paid.eq("series_id", visit.series_id).gte("service_date", visit.service_date)
+      : paid.eq("id", id);
+  const { data: paidRows } = await paid;
+
   const { data, error } = await supabase.rpc("cancel_booking", {
     p_booking_id: id,
     p_scope: scope === "following" ? "following" : "one",
     p_reason: reason.slice(0, 500) || null,
   });
   if (error) return { ok: false, error: rpcError(error) };
+
+  let refundNote = "";
+  if (paidRows?.length) {
+    const { data: canceled } = await supabase
+      .from("bookings")
+      .select("id")
+      .in("id", paidRows.map((r) => r.id as string))
+      .eq("status", "canceled");
+    const { refunded, failed } = await refundVisits(supabase, (canceled ?? []).map((r) => r.id as string));
+    if (refunded) refundNote = ` We’ve refunded ${formatMoney(refunded)} to your card; it usually shows up in 5–10 days.`;
+    if (failed) refundNote += " We couldn’t refund part of it automatically, so the team will sort it out for you.";
+  }
   refresh();
   const n = Number(data ?? 0);
-  return { ok: true, message: n > 1 ? `Canceled ${n} visits. We’ve let the team know.` : "Visit canceled. We’ve let the team know." };
+  return {
+    ok: true,
+    message: (n > 1 ? `Canceled ${n} visits. We’ve let the team know.` : "Visit canceled. We’ve let the team know.") + refundNote,
+  };
 }
 
 export async function rescheduleVisit(

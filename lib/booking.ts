@@ -97,7 +97,7 @@ export type BookingDetail = Booking & {
   pets: BookingPet[];
   service: (Pick<Service, "id" | "name" | "price_cents" | "price_label" | "price_unit" | "kind" | "duration_minutes"> &
     Pick<Service, "start_minute" | "end_minute" | "min_nights" | "max_nights" | "confirmation"> &
-    Pick<Service, "duration_options" | "handoff_options" | "pickup_fee_cents" | "bring_details">) | null;
+    Pick<Service, "duration_options" | "handoff_options" | "pickup_fee_cents" | "bring_details" | "allow_online_payment">) | null;
 };
 
 /**
@@ -371,13 +371,13 @@ export function initials(name: string) {
 export const BOOKING_DETAIL_SELECT = `
   id, user_id, service_id, title, kind, start_time, end_time, status, source, service_date, end_date,
   window_id, arrival_time, planned_minute, duration_minutes, walker_id, series_id, notes, client_note, answers, cancel_reason, handoff,
-  invitee_name, invitee_email, created_at, updated_at,
+  invitee_name, invitee_email, paid_at, paid_cents, paid_via, payment_id, refunded_cents, created_at, updated_at,
   client:profiles!bookings_user_id_fkey (id, full_name, email, phone, address, access_notes,
     emergency_contact_name, emergency_contact_phone, booking_approved),
   pets:booking_pets (pet:pets (id, name, breed, photo_url, temperament, walking_notes, medical_notes,
     medications, feeding_notes)),
   service:services (id, name, price_cents, price_label, price_unit, kind, duration_minutes, start_minute, end_minute,
-    min_nights, max_nights, confirmation, duration_options, handoff_options, pickup_fee_cents, bring_details)
+    min_nights, max_nights, confirmation, duration_options, handoff_options, pickup_fee_cents, bring_details, allow_online_payment)
 `;
 
 type RawBooking = Omit<BookingDetail, "pets" | "client" | "service"> & {

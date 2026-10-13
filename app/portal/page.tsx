@@ -1,4 +1,4 @@
-import { ArrowRight, CircleCheck, Circle, Gift, Hourglass, PawPrint, Star, Syringe } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, CreditCard, Gift, Hourglass, PawPrint, Star, Syringe } from "lucide-react";
 import Link from "next/link";
 import { BookingList } from "@/components/portal/booking-list";
 import { ShareLink } from "@/components/portal/share-link";
@@ -12,7 +12,10 @@ import { getBookingConfig } from "@/lib/booking-server";
 import { getBookingPolicy, getSiteSettings } from "@/lib/content";
 import { longDate, todayIn, type Ymd } from "@/lib/dates";
 import { latestUploads, recordsState, shotDate, shotsDue } from "@/lib/records";
+import { formatMoney } from "@/lib/format";
+import { dueVisits } from "@/lib/payments";
 import { siteUrl } from "@/lib/site-url";
+import { isStripeConfigured } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import type { Pet, Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -23,7 +26,7 @@ export default async function PortalHome() {
   const config = await getBookingConfig(supabase);
   const today = todayIn(config.settings.timezone);
 
-  const [petsRes, bookingsRes, anyBookingRes, servicesRes, recordsRes] = await Promise.all([
+  const [petsRes, bookingsRes, anyBookingRes, servicesRes, recordsRes, unpaidRes] = await Promise.all([
     supabase.from("pets").select("*").eq("owner_id", user.id).order("created_at"),
     supabase
       .from("bookings")
@@ -42,7 +45,18 @@ export default async function PortalHome() {
       .limit(200),
     supabase.from("services").select("*").eq("active", true).order("position"),
     supabase.from("pet_records").select("pet_id, created_at").eq("owner_id", user.id),
+    isStripeConfigured()
+      ? supabase
+          .from("bookings")
+          .select(BOOKING_DETAIL_SELECT)
+          .eq("user_id", user.id)
+          .in("status", ["scheduled", "completed"])
+          .is("paid_at", null)
+          .limit(100)
+      : Promise.resolve({ data: [] }),
   ]);
+  // Visits they can pay for online, upcoming or done.
+  const toPay = dueVisits(normalizeBookings(unpaidRes.data));
   const [policy, settings] = await Promise.all([getBookingPolicy(), getSiteSettings()]);
   const reviewUrl = policy.review_url;
   const visitsDone = (anyBookingRes.data ?? []).filter((b) => b.status === "completed").length;
@@ -115,6 +129,23 @@ export default async function PortalHome() {
           </div>
           <ButtonLink href={`/portal/pets/${due[0].pet.id}#records`} size="sm" variant="secondary">
             Add the new record
+          </ButtonLink>
+        </Card>
+      ) : null}
+
+      {toPay.due.length ? (
+        <Card className="mb-6 flex flex-wrap items-center gap-4">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-sun-100">
+            <CreditCard className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-semibold">
+              {toPay.due.length} visit{toPay.due.length === 1 ? "" : "s"} to pay · {formatMoney(toPay.total)}
+            </h2>
+            <p className="text-sm text-ink-600">Pay securely online, all at once or one at a time.</p>
+          </div>
+          <ButtonLink href="/portal/payments" variant="secondary">
+            Pay now
           </ButtonLink>
         </Card>
       ) : null}

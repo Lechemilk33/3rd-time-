@@ -1,10 +1,20 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { handoffOrNull, lengthOrNull, type Availability, type DayAvailability } from "@/lib/booking";
+import {
+  BOOKING_DETAIL_SELECT,
+  handoffOrNull,
+  lengthOrNull,
+  normalizeBookings,
+  type Availability,
+  type DayAvailability,
+} from "@/lib/booking";
 import { rpcError } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { isYmd } from "@/lib/dates";
+import { formatMoney } from "@/lib/format";
+import { visitAmount } from "@/lib/payments";
+import { refundVisits } from "@/lib/payments-server";
 import { bookingQuestions, readAnswers } from "@/lib/intake";
 import type { ActionResult, Handoff } from "@/lib/types";
 import { adminClient, clampText } from "./shared";
@@ -226,4 +236,51 @@ export async function getAdminAvailability(
     p_pets: opts.pets && opts.pets > 0 ? Math.min(10, Math.round(opts.pets)) : null,
   });
   return (data ?? []) as Availability[];
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+/** A visit paid outside the site (cash, Venmo...). */
+export async function markVisitPaid(id: string, via: "cash" | "other"): Promise<ActionResult> {
+  if (!UUID.test(id) || (via !== "cash" && via !== "other")) return { ok: false, error: "Visit not found." };
+  const supabase = await adminClient();
+  const { data } = await supabase.from("bookings").select(BOOKING_DETAIL_SELECT).eq("id", id).maybeSingle();
+  const [visit] = normalizeBookings(data ? [data] : []);
+  if (!visit) return { ok: false, error: "Visit not found." };
+  if (visit.paid_at) return { ok: false, error: "This visit is already paid." };
+  const { error } = await supabase
+    .from("bookings")
+    .update({ paid_at: new Date().toISOString(), paid_via: via, paid_cents: visitAmount(visit) ?? 0, payment_id: null })
+    .eq("id", id)
+    .is("paid_at", null);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, message: "Marked paid." };
+}
+
+/** Undo "marked paid" (card payments are refunded instead). */
+export async function markVisitUnpaid(id: string): Promise<ActionResult> {
+  if (!UUID.test(id)) return { ok: false, error: "Visit not found." };
+  const supabase = await adminClient();
+  const { error } = await supabase
+    .from("bookings")
+    .update({ paid_at: null, paid_via: null, paid_cents: null })
+    .eq("id", id)
+    .in("paid_via", ["cash", "other"]);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, message: "Marked unpaid." };
+}
+
+/** Refunds what the client paid by card for this visit. */
+export async function refundVisit(id: string): Promise<ActionResult> {
+  if (!UUID.test(id)) return { ok: false, error: "Visit not found." };
+  const supabase = await adminClient();
+  const { refunded, failed } = await refundVisits(supabase, [id]);
+  if (failed) return { ok: false, error: "Stripe couldn’t refund it. Try again, or refund it in the Stripe Dashboard." };
+  if (!refunded) return { ok: false, error: "There’s nothing left to refund on this visit." };
+  refresh();
+  return { ok: true, message: `Refunded ${formatMoney(refunded)}. It reaches their card in 5–10 days.` };
 }

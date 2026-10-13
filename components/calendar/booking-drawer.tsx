@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Check,
   ClipboardList,
+  CreditCard,
   ExternalLink,
   KeyRound,
   LoaderCircle,
@@ -23,7 +24,10 @@ import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, 
 import {
   cancelBooking,
   deleteBooking,
+  markVisitPaid,
+  markVisitUnpaid,
   moveBooking,
+  refundVisit,
   setBookingStatus,
   updateBooking,
 } from "@/app/admin/_actions/bookings";
@@ -47,8 +51,9 @@ import {
   type BookingDetail,
 } from "@/lib/booking";
 import { addDays, diffDays, isYmd, longDate, minutesToTimeInput, timeToMinutes } from "@/lib/dates";
-import { formatDate, formatDuration } from "@/lib/format";
+import { formatDate, formatDuration, formatMoney } from "@/lib/format";
 import { answerRows } from "@/lib/intake";
+import { payLabel, payState, visitAmount } from "@/lib/payments";
 import type { ActionResult, Handoff } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -306,6 +311,8 @@ export function BookingDrawer({
             ) : null}
           </Section>
 
+          <PaymentSection booking={b} pending={pending} run={run} />
+
           {answers.length ? (
             <Section title={`${b.title} answers`} icon={<ClipboardList className="size-4" />}>
               <dl className="space-y-2 rounded-2xl border border-ink-100 p-3 text-sm">
@@ -461,6 +468,59 @@ export function BookingDrawer({
         </div>
       </aside>
     </div>
+  );
+}
+
+/** Paid or not, and the team's tools: mark paid (cash, Venmo...), undo that, or refund a card payment. */
+function PaymentSection({ booking: b, pending, run }: { booking: BookingDetail; pending: boolean; run: Run }) {
+  const state = payState(b);
+  if (state === "none" || state === "free") return null;
+  const left = (b.paid_cents ?? 0) - b.refunded_cents;
+  const tone = state === "paid" ? "green" : state === "refunded" ? "gray" : "sun";
+  return (
+    <Section title="Payment" icon={<CreditCard className="size-4" />}>
+      <p className="flex flex-wrap items-center gap-2">
+        <Badge tone={tone}>{state === "paid" ? "Paid" : state === "refunded" ? "Refunded" : "Not paid"}</Badge>
+        <span className="font-bold text-ink">{payLabel(b)}</span>
+      </p>
+      {b.paid_at ? <p className="text-xs font-semibold text-ink-400">{b.paid_via === "card" ? "Paid online" : "Marked paid"} {formatDate(b.paid_at)}</p> : null}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {state === "due" || state === "offline" ? (
+          <>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => markVisitPaid(b.id, "cash"))}>
+              Paid in cash
+            </Button>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => markVisitPaid(b.id, "other"))}>
+              Paid another way
+            </Button>
+          </>
+        ) : null}
+        {b.paid_at && b.paid_via !== "card" ? (
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => markVisitUnpaid(b.id))}>
+            Undo
+          </Button>
+        ) : null}
+        {b.paid_via === "card" && left > 0 ? (
+          <Button
+            size="sm"
+            variant={b.status === "canceled" ? "secondary" : "outline"}
+            disabled={pending}
+            onClick={() => {
+              if (!confirm(`Refund ${formatMoney(left)} to ${clientName(b)}’s card?`)) return;
+              run(() => refundVisit(b.id));
+            }}
+          >
+            Refund {formatMoney(left)}
+          </Button>
+        ) : null}
+      </div>
+      {b.status === "canceled" && b.paid_via === "card" && left > 0 ? (
+        <p className="mt-2 text-xs font-semibold text-ink-600">This visit was canceled after it was paid. Refund it if it shouldn’t be charged.</p>
+      ) : null}
+      {state === "due" && visitAmount(b) ? (
+        <p className="mt-2 text-xs font-semibold text-ink-400">They can pay for it online from their portal’s Payments page.</p>
+      ) : null}
+    </Section>
   );
 }
 

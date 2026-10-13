@@ -25,13 +25,15 @@ function Status({ ok, children }: { ok: boolean; children: ReactNode }) {
 
 export default async function IntegrationsPage({ searchParams }: PageProps<"/admin/integrations">) {
   const [{ supabase }, sp] = await Promise.all([adminData(), searchParams]);
-  const [origin, emailRes, instagramRes] = await Promise.all([
+  const [origin, emailRes, instagramRes, paymentsRes] = await Promise.all([
     getOrigin(),
     supabase.rpc("email_status"),
     supabase.rpc("instagram_status"),
+    supabase.rpc("payments_status"),
   ]);
   const stripe = isStripeConfigured();
-  const stripeWebhook = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  // The webhook's signing secret lives in the database (Vault), which checks every Stripe event.
+  const stripeWebhook = Boolean(paymentsRes.data);
   const serviceRole = isServiceRoleConfigured();
 
   return (
@@ -68,27 +70,33 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/adm
           </div>
           <p className="text-ink">
             {stripe
-              ? "Clients can pay online for any service where you’ve turned it on."
-              : "Not set up yet — clients pay you the way they do today. Online payments are optional."}
+              ? "Clients pay for their visits from the Payments page in their portal, one or several at once, by card, Apple Pay or Google Pay. Paid visits are marked in your calendar, where you can also mark cash payments and give refunds. When a client cancels a visit they paid for, it’s refunded automatically."
+              : "Not set up yet: clients pay you the way they do today. Online payments are optional."}
           </p>
-          <details className="mt-3" open={!stripe}>
+          <p className="mt-2 text-sm text-ink-600">
+            Online payment is on for services where “Clients can pay online” is ticked in{" "}
+            <Link href="/admin/services" className="font-bold text-ocean underline">
+              Services
+            </Link>
+            . See every payment on the{" "}
+            <Link href="/admin/payments" className="font-bold text-ocean underline">
+              Payments
+            </Link>{" "}
+            page.
+          </p>
+          <details className="mt-3" open={!stripe || !stripeWebhook}>
             <summary className="cursor-pointer text-sm font-bold text-ocean">Setup steps (for whoever manages the website)</summary>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-ink">
               <li>
-                Add your Stripe secret key as <code className="rounded bg-sea-50 px-1">STRIPE_SECRET_KEY</code> in Vercel
-                (start with a test key that begins with <code>sk_test_</code>).
+                In Stripe → Developers → API keys, copy the <b>secret key</b> and add it in Vercel → Settings → Environment
+                Variables as <code className="rounded bg-sea-50 px-1">STRIPE_SECRET_KEY</code> (Production), then redeploy.
               </li>
               <li>
-                In Stripe → Developers → Webhooks, add an endpoint for{" "}
-                <code className="rounded bg-sea-50 px-1">checkout.session.completed</code> using the URL below, then save
-                its signing secret as <code className="rounded bg-sea-50 px-1">STRIPE_WEBHOOK_SECRET</code>.
-              </li>
-              <li>
-                Turn on “Clients can pay online” for any service in{" "}
-                <Link href="/admin/services" className="font-bold text-ocean underline">
-                  Services
-                </Link>
-                .
+                Stripe → Developers → Webhooks has an endpoint for the URL below sending{" "}
+                <code className="rounded bg-sea-50 px-1">checkout.session.*</code>,{" "}
+                <code className="rounded bg-sea-50 px-1">charge.refunded</code> and{" "}
+                <code className="rounded bg-sea-50 px-1">refund.*</code> events. Its signing secret is stored in Supabase
+                Vault as <code className="rounded bg-sea-50 px-1">stripe_webhook_secret</code>.
               </li>
             </ol>
             <div className="mt-4 max-w-xl">
@@ -115,7 +123,7 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/adm
             {serviceRole ? "Everything’s connected — nothing to do here." : "One technical step is missing (for whoever manages the website):"}
           </p>
           <p className="mt-2 text-sm text-ink-600">
-            The Stripe webhook, the Instagram feed and automatic admin access for the emails in{" "}
+            The Instagram feed and automatic admin access for the emails in{" "}
             <code className="rounded bg-sea-50 px-1">ADMIN_EMAILS</code> need the Supabase secret key saved as{" "}
             <code className="rounded bg-sea-50 px-1">SUPABASE_SECRET_KEY</code> in Vercel.
           </p>

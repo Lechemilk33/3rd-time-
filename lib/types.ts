@@ -252,6 +252,12 @@ export type Booking = {
   cancel_reason: string | null;
   invitee_name: string | null;
   invitee_email: string | null;
+  /** Paid online (card) or marked paid by the team (cash/other). See lib/payments.ts. */
+  paid_at: string | null;
+  paid_cents: number | null;
+  paid_via: "card" | "cash" | "other" | null;
+  payment_id: string | null;
+  refunded_cents: number;
   created_at: string;
   updated_at: string;
 };
@@ -267,6 +273,10 @@ export type Payment = {
   status: string;
   customer_email: string | null;
   stripe_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  /** Visits this payment covered. */
+  booking_ids: string[];
+  refunded_cents: number;
   created_at: string;
 };
 

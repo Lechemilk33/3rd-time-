@@ -26,7 +26,8 @@ import {
   type DayAvailability,
 } from "@/lib/booking";
 import { addDays, diffDays, formatYmd, longDate, timeToMinutes, zonedToDate, type Ymd } from "@/lib/dates";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatMoney } from "@/lib/format";
+import { payState, visitAmount } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 
 type WalkerInfo = { display_name: string; color: string };
@@ -230,6 +231,7 @@ function VisitCard({
                 <Repeat className="size-3" aria-hidden /> Weekly
               </Badge>
             ) : null}
+            <PayChip visit={v} />
           </div>
           <p className="mt-0.5 font-bold text-ink">
             {kind === "stay" ? (
@@ -427,5 +429,21 @@ function VisitCard({
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** Paid, refunded, or a quick link to pay for it. */
+function PayChip({ visit }: { visit: BookingDetail }) {
+  const state = payState(visit);
+  if (state === "paid") return <Badge tone="green">Paid</Badge>;
+  if (state === "refunded") return <Badge tone="gray">Refunded</Badge>;
+  if (state !== "due") return null;
+  return (
+    <Link
+      href="/portal/payments"
+      className="inline-flex items-center rounded-full bg-sun-100 px-2.5 py-0.5 text-xs font-bold text-ink transition hover:bg-sun"
+    >
+      Pay {formatMoney(visitAmount(visit))}
+    </Link>
   );
 }

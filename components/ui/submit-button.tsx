@@ -14,7 +14,7 @@ export function SubmitButton({
   const status = useFormStatus();
   const pending = pendingProp || status.pending;
   return (
-    <Button type="submit" disabled={pending || props.disabled} {...props}>
+    <Button type="submit" {...props} disabled={pending || props.disabled}>
       {pending ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
       {pending && pendingText ? pendingText : children}
     </Button>
