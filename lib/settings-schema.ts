@@ -10,7 +10,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     fields: [
       { key: "businessName", label: "Business name", type: "text" },
       { key: "tagline", label: "Tagline", type: "text", help: "Shown in the footer and when people log in." },
-      { key: "logoUrl", label: "Logo", type: "image", help: "Square works best. Leave empty for the paw logo." },
+      { key: "logoUrl", label: "Logo", type: "image", help: "Square works best. Leave empty to use the Waiting for Paws logo." },
     ],
   },
   {

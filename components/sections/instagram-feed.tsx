@@ -1,6 +1,7 @@
 import { Copy, Play } from "lucide-react";
 import type { ReactNode } from "react";
 import { SectionHeading, SectionShell } from "@/components/sections/shell";
+import { DEFAULT_LOGO } from "@/components/site/logo";
 import { num, str } from "@/components/sections/helpers";
 import { ButtonLink } from "@/components/ui/button";
 import { InstagramIcon, PawMark } from "@/components/ui/icons";
@@ -111,7 +112,7 @@ function FollowCard({ handle, logoUrl, button }: { handle: string; logoUrl: stri
       <div className="relative flex flex-col items-center gap-6 rounded-[2rem] border border-ink-100 bg-white px-6 py-10 text-center shadow-lg sm:flex-row sm:px-10 sm:text-left">
         <span className="grid size-24 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-sun to-coral p-1 shadow-md">
           <span className="grid size-full place-items-center overflow-hidden rounded-full border-4 border-white bg-sea-100 text-ocean">
-            {logoUrl ? <Photo src={logoUrl} alt="" className="size-full" /> : <PawMark className="size-11 -rotate-12" />}
+            <Photo src={logoUrl || DEFAULT_LOGO} alt="" className="size-full" />
           </span>
         </span>
         <div className="min-w-0 flex-1">

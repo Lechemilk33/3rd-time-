@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { PawMark } from "@/components/ui/icons";
 import { Photo } from "@/components/ui/photo";
 import { cn } from "@/lib/utils";
+
+/** The Waiting for Paws logo, used until a different one is uploaded in Site settings. */
+export const DEFAULT_LOGO = "/brand/logo.webp";
 
 export function Logo({
   name,
@@ -16,13 +18,14 @@ export function Logo({
 }) {
   return (
     <Link href={href} className="group inline-flex items-center gap-2.5" aria-label={`${name} home`}>
-      {logoUrl ? (
-        <Photo src={logoUrl} alt="" className="size-11 rounded-full" loading="eager" />
-      ) : (
-        <span className="grid size-11 place-items-center rounded-full bg-sea shadow-[inset_0_-3px_0_rgba(0,0,0,0.08)] transition group-hover:rotate-[-8deg]">
-          <PawMark className="size-6 text-ink" />
-        </span>
-      )}
+      <Photo
+        src={logoUrl || DEFAULT_LOGO}
+        alt=""
+        width={48}
+        height={48}
+        className="size-12 shrink-0 rounded-full transition group-hover:rotate-[-6deg]"
+        loading="eager"
+      />
       <span
         className={cn(
           "font-display text-xl leading-none font-semibold tracking-tight",
