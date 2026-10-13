@@ -17,6 +17,7 @@ import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
 import { formatAge, formatDate, formatMoney } from "@/lib/format";
 import type { FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
+import { sourceLabel } from "@/lib/source";
 import { cn } from "@/lib/utils";
 
 const INTAKE_LABELS: Record<SubmissionStatus, string> = {
@@ -97,6 +98,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
               <h2 className="mb-3 text-xl font-semibold">Booking</h2>
               <ApprovalToggle userId={profile.id} approved={profile.booking_approved} />
               <p className="mt-4 border-t border-ink-100 pt-3 text-sm text-ink-600">
+                Found us: <span className="font-bold text-ink">{sourceLabel(profile.source)}</span>
+              </p>
+              <p className="mt-1 text-sm text-ink-600">
                 {profile.terms_accepted_at
                   ? `Agreed to the Terms of Service and Privacy Policy on ${formatDate(profile.terms_accepted_at)}.`
                   : "Hasn’t agreed to the Terms of Service yet. They’ll be asked the next time they log in."}

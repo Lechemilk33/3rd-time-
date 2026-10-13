@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/env";
 import { TERMS_VERSION } from "@/lib/legal";
 import { getOrigin, safeNextPath } from "@/lib/origin";
+import { cleanSource } from "@/lib/source";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types";
 import { formString } from "@/lib/utils";
@@ -74,7 +75,7 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
     password,
     options: {
       // Saved on the profile with the time they agreed (see handle_new_user).
-      data: { full_name: fullName, phone, terms_version: TERMS_VERSION },
+      data: { full_name: fullName, phone, terms_version: TERMS_VERSION, source: cleanSource(formString(formData, "source")) || null },
       emailRedirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
     },
   });

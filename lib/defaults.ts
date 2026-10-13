@@ -29,15 +29,16 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     href: "/book",
   },
   seo: {
-    title: "Waiting for Paws · Ocean Beach Dog Walking",
+    title: "Dog Walker in Ocean Beach, San Diego · Waiting for Paws",
     description:
-      "Friendly, reliable dog walks and pet visits in Ocean Beach, San Diego. Book online, manage your pup’s info, and pay securely in the client portal.",
+      "Friendly, reliable dog walks, park trips and pet visits in Ocean Beach, Point Loma and nearby San Diego. Meet & greet first, then book online in minutes.",
     imageUrl: "",
+    googleVerification: "",
   },
   theme: DEFAULT_THEME,
 };
 
-const SERVICE_AREAS = [
+export const SERVICE_AREAS = [
   "Ocean Beach",
   "Point Loma",
   "Sunset Cliffs",
@@ -232,7 +233,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
   {
     slug: "services",
-    title: "Services",
+    title: "Dog Walking Services & Prices",
     nav_label: "Services",
     show_in_nav: true,
     published: true,
@@ -287,7 +288,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
   {
     slug: "about",
-    title: "About",
+    title: "About Your Ocean Beach Dog Walker",
     nav_label: "About",
     show_in_nav: true,
     published: true,
@@ -351,7 +352,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
   {
     slug: "gallery",
-    title: "Gallery",
+    title: "Happy Pups Gallery",
     nav_label: "Gallery",
     show_in_nav: true,
     published: true,
@@ -385,7 +386,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
   {
     slug: "contact",
-    title: "Contact",
+    title: "Contact Us",
     nav_label: "Contact",
     show_in_nav: true,
     published: true,
@@ -412,7 +413,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
   },
   {
     slug: "book",
-    title: "Book",
+    title: "Book a Dog Walk",
     nav_label: "Book",
     show_in_nav: false,
     published: true,

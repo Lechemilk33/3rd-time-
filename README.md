@@ -125,6 +125,14 @@ Booking is built in — no third-party scheduler.
 
   Reminders run from a `pg_cron` job every hour. Use **Send a test** in Schedule to
   check delivery.
+- **Search & tracking:** `/robots.txt` and `/sitemap.xml` are generated; the home page carries
+  schema.org `LocalBusiness` data (service areas from the home page's Service area section,
+  services and prices, logo, Instagram); every page has a canonical URL. Paste the Google Search
+  Console "HTML tag" code in Admin → Site settings → Search & sharing. Visits are counted with Vercel
+  Web Analytics (cookie-free; turn it on in the Vercel project's Analytics tab). The first time
+  someone visits, their browser remembers where they came from (`?src=flyer` on QR codes, or the
+  referring site such as Google or Instagram) and sign-up saves it as `profiles.source`; the admin
+  overview shows how new clients found you.
 - **Terms & privacy:** `/terms` and `/privacy` ship with plain-English starting text
   (`lib/legal.ts`) and are linked from the footer, sign-up, booking and payments. The cancellation
   window in the terms is filled in live from Admin → Schedule. Edit either page in Admin → Pages.

@@ -63,7 +63,14 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         fields: [
           { key: "title", label: "Site title", type: "text" },
           { key: "description", label: "Description", type: "textarea" },
-          { key: "imageUrl", label: "Share image", type: "image", help: "1200×630 looks best." },
+          { key: "imageUrl", label: "Share image", type: "image", help: "1200×630 looks best. Leave empty to use the logo card." },
+          {
+            key: "googleVerification",
+            label: "Google Search Console code",
+            type: "text",
+            placeholder: "e.g. a1B2c3D4e5…",
+            help: "In Search Console choose “HTML tag” and paste just the part inside content=\"…\".",
+          },
         ],
       },
     ],

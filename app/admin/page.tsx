@@ -11,6 +11,7 @@ import { BOOKING_DETAIL_SELECT, normalizeBookings } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
 import { getSiteSettings } from "@/lib/content";
 import { addDays, longDate, todayIn } from "@/lib/dates";
+import { sourceLabel } from "@/lib/source";
 import { isStripeConfigured } from "@/lib/stripe";
 
 export default async function AdminHome() {
@@ -19,7 +20,7 @@ export default async function AdminHome() {
   const tz = config.settings.timezone;
   const today = todayIn(tz);
 
-  const [clients, intake, messages, todayRes, tomorrowRes, requestsRes, requestCount, capacityRes, emailRes, settings] = await Promise.all([
+  const [clients, intake, messages, todayRes, tomorrowRes, requestsRes, requestCount, capacityRes, emailRes, settings, sourcesRes] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "client"),
     supabase.from("form_submissions").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase.from("contact_messages").select("id", { count: "exact", head: true }).eq("handled", false),
@@ -47,7 +48,19 @@ export default async function AdminHome() {
     supabase.from("walker_hours").select("id", { count: "exact", head: true }),
     supabase.rpc("email_status"),
     getSiteSettings(),
+    supabase
+      .from("profiles")
+      .select("source")
+      .eq("role", "client")
+      .gte("created_at", new Date(Date.parse(`${today}T00:00:00Z`) - 90 * 86_400_000).toISOString()),
   ]);
+
+  // How new clients found the site in the last 90 days (flyer QR codes, Google, Instagram…).
+  const sourceCounts = [...(sourcesRes.data ?? []).reduce((m, r) => {
+    const key = sourceLabel(r.source as string | null);
+    return m.set(key, (m.get(key) ?? 0) + 1);
+  }, new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  const newClients = sourceCounts.reduce((n, [, c]) => n + c, 0);
 
   const todays = normalizeBookings(todayRes.data);
   const requests = normalizeBookings(requestsRes.data);
@@ -166,6 +179,28 @@ export default async function AdminHome() {
             </ul>
           </Card>
           )}
+          {newClients ? (
+            <Card>
+              <h2 className="text-xl font-semibold">How new clients found you</h2>
+              <p className="mb-4 text-sm text-ink-600">
+                {newClients} sign-up{newClients === 1 ? "" : "s"} in the last 90 days. Put a QR code on flyers and stickers to
+                see them here.
+              </p>
+              <ul className="space-y-2.5">
+                {sourceCounts.slice(0, 6).map(([label, count]) => (
+                  <li key={label}>
+                    <div className="flex justify-between text-sm font-bold">
+                      <span>{label}</span>
+                      <span className="text-ink-600">{count}</span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-sea-50">
+                      <div className="h-full rounded-full bg-ocean" style={{ width: `${(count / newClients) * 100}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
           {(intake.count ?? 0) > 0 ? (
             <Card>
               <Link href="/admin/clients?filter=review" className="flex items-center gap-3">

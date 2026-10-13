@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   requestPasswordReset,
   sendMagicLink,
@@ -14,6 +14,7 @@ import { Field, Input } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
+import { SOURCE_KEY } from "@/lib/source";
 import { useFormAction } from "@/lib/use-form-action";
 
 /** Reads ?next= and ?error= from the URL, so render it inside <Suspense>. */
@@ -82,14 +83,27 @@ export function LoginForm({ disabled }: { disabled?: boolean }) {
 }
 
 /** Reads ?next= so a visitor who tapped "Book" lands back there, so render it inside <Suspense>. */
+const noSubscribe = () => () => {};
+
+function readSource() {
+  try {
+    return localStorage.getItem(SOURCE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function SignupForm({ disabled }: { disabled?: boolean }) {
   const next = useSearchParams().get("next") ?? "/portal";
+  // How they found us (see SourceTracker), saved on their profile.
+  const source = useSyncExternalStore(noSubscribe, readSource, () => "");
   const [state, onSubmit, pending] = useFormAction(signUp);
   if (state?.ok) return <Notice tone="success" title="Check your email">{state.message}</Notice>;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <input type="hidden" name="next" value={next} />
+      <input type="hidden" name="source" value={source} />
       <Field label="Your name" htmlFor="full_name" required>
         <Input id="full_name" name="full_name" autoComplete="name" required disabled={disabled} />
       </Field>

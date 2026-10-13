@@ -16,6 +16,7 @@ export async function generateMetadata({ params }: PageProps<"/[slug]">): Promis
   return {
     title: content.page.title,
     description: content.page.seo_description ?? undefined,
+    alternates: { canonical: `/${slug}` },
   };
 }
 

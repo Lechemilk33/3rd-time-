@@ -109,14 +109,14 @@ We don’t sell your information, and we don’t use it for advertising.
 Only the services we use to run the business, and only what they need to do their job:
 
 - Supabase (our secure database and logins)
-- Vercel (website hosting)
+- Vercel (website hosting and anonymous visit counts)
 - Resend (booking emails)
 - Stripe (online payments)
 
 We may also share information with a veterinarian in an emergency, with your emergency contact if we can’t reach you, or when the law requires it.
 
-## Cookies
-We use a small number of essential cookies to keep you logged in and keep the site secure. We don’t use advertising or cross-site tracking cookies, so there’s nothing to turn off, and we treat “Do Not Track” browser signals the same way.
+## Cookies and visit stats
+We use a small number of essential cookies to keep you logged in and keep the site secure. To see which pages are useful, we count visits with Vercel Web Analytics, which doesn’t use cookies and doesn’t identify you. When you first visit, your browser also remembers how you found us (for example a flyer or a Google search); if you create an account, that’s saved with it so we know which of our efforts are working. We don’t use advertising or cross-site tracking, so there’s nothing to turn off, and we treat “Do Not Track” browser signals the same way.
 
 ## How we protect it
 Your information is stored with reputable providers and sent over encrypted connections, and only our team can see client and pup details. Home access information is used only for your visits.

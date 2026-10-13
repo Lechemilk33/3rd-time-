@@ -28,6 +28,8 @@ export type SiteSettings = {
     title: string;
     description: string;
     imageUrl: string;
+    /** Google Search Console "HTML tag" verification code. */
+    googleVerification?: string;
   };
   theme: ThemeColors;
 };
@@ -179,6 +181,8 @@ export type Profile = {
   /** Version of the Terms of Service / Privacy Policy they agreed to, and when. */
   terms_version: string | null;
   terms_accepted_at: string | null;
+  /** How they first found the site (flyer, google, instagram…). */
+  source: string | null;
   created_at: string;
 };
 
