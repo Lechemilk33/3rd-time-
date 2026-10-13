@@ -171,13 +171,30 @@ Booking is built in — no third-party scheduler.
 
 ### 5. Stripe (payments)
 
-1. Set `STRIPE_SECRET_KEY` (start with a `sk_test_` key).
-2. Add a webhook endpoint for `checkout.session.completed` at
-   `https://YOUR-DOMAIN/api/webhooks/stripe` and set `STRIPE_WEBHOOK_SECRET`.
-3. Turn on **Clients can pay online** for a service in **Admin → Services**.
+Clients pay for their confirmed visits (upcoming or done) from **Portal → Payments**, one or many
+at once, with Stripe Checkout (card, Apple Pay, Google Pay, Link). The portal home shows what's
+left to pay, each visit shows **Paid** or a **Pay** link, and the booking confirmation offers to pay
+now. Prices are worked out on the server from the service, length and pick-up fee
+(`lib/payments.ts`). Stripe emails a receipt.
 
-Clients then see a **Pay** button in **Portal → Payments**. Checkout is hosted by Stripe and the
-amount always comes from the service's price in the database.
+- **Recording payments:** Stripe's webhook (`/api/webhooks/stripe`) passes the raw event to the
+  database, which checks the signature with the signing secret in Supabase Vault
+  (`stripe_webhook_secret`) before recording the payment and marking the visits paid
+  (`public.stripe_webhook`). The site needs no database master key for this.
+- **Refunds:** cancelling a card-paid visit online refunds it automatically. In the calendar, each
+  visit shows its payment, with **Paid in cash / another way**, **Undo** and **Refund**.
+- **Admin → Payments** lists payments (with refunds and links to Stripe) and who still owes for
+  past visits.
+
+Setup:
+
+1. Add the Stripe **secret key** in Vercel as `STRIPE_SECRET_KEY` (Production) and redeploy.
+2. Create a webhook endpoint at `https://YOUR-DOMAIN/api/webhooks/stripe` for
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`,
+   `refund.created`, `refund.updated` and `refund.failed`, and store its signing secret:
+   `select vault.create_secret('whsec_...', 'stripe_webhook_secret');`
+3. Tick **Clients can pay online** for each priced service in **Admin → Services**.
 
 ### 6. Instagram feed (optional)
 
