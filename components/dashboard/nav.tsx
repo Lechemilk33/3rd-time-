@@ -4,6 +4,7 @@ import {
   CalendarCheck2,
   CalendarDays,
   CalendarPlus,
+  ChevronDown,
   ClipboardList,
   Clock,
   CreditCard,
@@ -22,14 +23,24 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
-type NavGroup = { title?: string; items: NavItem[] };
+type NavGroup = {
+  /** Stable id, used to remember whether a collapsible group was left open. */
+  id: string;
+  title?: string;
+  /** Shown under a collapsed group's title so people know what's inside. */
+  hint?: string;
+  collapsible?: boolean;
+  items: NavItem[];
+};
 
 const NAV: Record<"portal" | "admin", NavGroup[]> = {
   portal: [
     {
+      id: "main",
       items: [
         { href: "/portal", label: "Home", icon: House },
         { href: "/portal/book", label: "Book", icon: CalendarPlus },
@@ -41,40 +52,79 @@ const NAV: Record<"portal" | "admin", NavGroup[]> = {
       ],
     },
   ],
+  // Day-to-day work first, then how bookings are set up, then the website (tucked away — it
+  // changes rarely), then the one-time technical bits.
   admin: [
     {
+      id: "main",
       items: [
         { href: "/admin", label: "Overview", icon: LayoutDashboard },
         { href: "/admin/calendar", label: "Calendar", icon: CalendarDays },
-      ],
-    },
-    {
-      title: "Website",
-      items: [
-        { href: "/admin/pages", label: "Pages", icon: LayoutTemplate },
-        { href: "/admin/services", label: "Services", icon: Tags },
-        { href: "/admin/gallery", label: "Gallery", icon: Images },
-        { href: "/admin/settings", label: "Settings & colors", icon: Palette },
-      ],
-    },
-    {
-      title: "Business",
-      items: [
         { href: "/admin/clients", label: "Clients", icon: Users },
         { href: "/admin/messages", label: "Messages", icon: Inbox },
         { href: "/admin/payments", label: "Payments", icon: CreditCard },
+      ],
+    },
+    {
+      id: "booking",
+      title: "Booking",
+      items: [
+        { href: "/admin/services", label: "Services & prices", icon: Tags },
+        { href: "/admin/schedule", label: "Schedule", icon: Clock },
         { href: "/admin/intake-form", label: "Intake & questions", icon: ClipboardList },
       ],
     },
     {
-      title: "Setup",
+      id: "website",
+      title: "Website",
+      hint: "Pages, gallery, look & info",
+      collapsible: true,
       items: [
-        { href: "/admin/schedule", label: "Schedule & availability", icon: Clock },
-        { href: "/admin/integrations", label: "Integrations", icon: Plug },
+        { href: "/admin/pages", label: "Pages", icon: LayoutTemplate },
+        { href: "/admin/gallery", label: "Gallery", icon: Images },
+        { href: "/admin/settings", label: "Site settings", icon: Palette },
       ],
+    },
+    {
+      id: "setup",
+      title: "Setup",
+      items: [{ href: "/admin/integrations", label: "Integrations", icon: Plug }],
     },
   ],
 };
+
+// Which collapsible groups someone left open, kept in this browser only.
+const OPEN_KEY = "wfp:nav-open";
+const OPEN_EVENT = "wfp:nav-open";
+
+function readOpen(): string {
+  try {
+    return localStorage.getItem(OPEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function subscribeOpen(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(OPEN_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(OPEN_EVENT, onChange);
+  };
+}
+
+function setOpen(id: string, open: boolean) {
+  const ids = new Set(readOpen().split(",").filter(Boolean));
+  if (open) ids.add(id);
+  else ids.delete(id);
+  try {
+    localStorage.setItem(OPEN_KEY, [...ids].join(","));
+  } catch {
+    // Private mode: the group still toggles for this visit via the event below.
+  }
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
 
 function useIsActive() {
   const pathname = usePathname();
@@ -99,33 +149,66 @@ function CountBadge({ n, active }: { n?: number; active?: boolean }) {
 
 export function SidebarNav({ area, counts }: { area: "portal" | "admin"; counts?: Record<string, number> }) {
   const isActive = useIsActive();
+  // Server render (and first paint) knows nothing saved, so groups start closed unless you're in them.
+  const saved = useSyncExternalStore(subscribeOpen, readOpen, () => "");
+  const [session, setSession] = useState<Record<string, boolean>>({});
+
   return (
     <nav className="space-y-6" aria-label={area === "admin" ? "Admin" : "Portal"}>
-      {NAV[area].map((group, i) => (
-        <div key={i}>
-          {group.title ? (
-            <p className="mb-2 px-3 text-xs font-extrabold tracking-wider text-ink-400 uppercase">{group.title}</p>
-          ) : null}
-          <ul className="space-y-1">
-            {group.items.map(({ href, label, icon: Icon }) => (
-              <li key={href}>
-                <Link
-                  href={href}
-                  aria-current={isActive(href) ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2.5 font-bold transition",
-                    isActive(href) ? "bg-sea-100 text-ink" : "text-ink-600 hover:bg-sea-50 hover:text-ink",
-                  )}
-                >
-                  <Icon className={cn("size-[1.15rem]", isActive(href) ? "text-ocean" : "")} aria-hidden />
-                  {label}
-                  <CountBadge n={counts?.[href]} />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {NAV[area].map((group) => {
+        const containsActive = group.items.some((item) => isActive(item.href));
+        const remembered = session[group.id] ?? saved.split(",").includes(group.id);
+        // A group you're working in stays open; otherwise it's however you left it.
+        const open = !group.collapsible || containsActive || remembered;
+        const listId = `nav-${group.id}`;
+        const groupCount = group.items.reduce((sum, item) => sum + (counts?.[item.href] ?? 0), 0);
+        return (
+          <div key={group.id}>
+            {group.collapsible ? (
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={listId}
+                disabled={containsActive}
+                onClick={() => {
+                  setSession((cur) => ({ ...cur, [group.id]: !open }));
+                  setOpen(group.id, !open);
+                }}
+                className="group flex w-full items-center gap-2 rounded-xl px-3 py-1.5 text-left transition hover:bg-sea-50 disabled:hover:bg-transparent"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold tracking-wider text-ink-400 uppercase">{group.title}</span>
+                  {!open && group.hint ? <span className="block truncate text-xs font-semibold text-ink-400">{group.hint}</span> : null}
+                </span>
+                {!open && groupCount ? <CountBadge n={groupCount} /> : null}
+                {containsActive ? null : (
+                  <ChevronDown className={cn("size-4 shrink-0 text-ink-400 transition", open && "rotate-180")} aria-hidden />
+                )}
+              </button>
+            ) : group.title ? (
+              <p className="mb-2 px-3 text-xs font-extrabold tracking-wider text-ink-400 uppercase">{group.title}</p>
+            ) : null}
+            <ul id={listId} hidden={!open} className={cn("space-y-1", group.collapsible && "mt-2")}>
+              {group.items.map(({ href, label, icon: Icon }) => (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    aria-current={isActive(href) ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl px-3 py-2.5 font-bold transition",
+                      isActive(href) ? "bg-sea-100 text-ink" : "text-ink-600 hover:bg-sea-50 hover:text-ink",
+                    )}
+                  >
+                    <Icon className={cn("size-[1.15rem]", isActive(href) ? "text-ocean" : "")} aria-hidden />
+                    {label}
+                    <CountBadge n={counts?.[href]} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
     </nav>
   );
 }
@@ -141,6 +224,7 @@ export function MobileTabs({ area, counts }: { area: "portal" | "admin"; counts?
             <Link
               href={href}
               aria-current={isActive(href) ? "page" : undefined}
+              ref={isActive(href) ? (el) => el?.scrollIntoView({ block: "nearest", inline: "center" }) : undefined}
               className={cn(
                 "flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold whitespace-nowrap transition",
                 isActive(href) ? "bg-ink text-white" : "bg-sea-50 text-ink-600",

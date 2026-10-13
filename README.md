@@ -29,7 +29,7 @@ The palette leans into that, and into Ocean Beach itself.
 | `sand`  | `#FFF7EA` | Warm section backgrounds                           |
 | `coral` | `#FF8A65` | Small sunset accents                               |
 
-The admin can change all six in **Admin → Settings & colors**. Every lighter or darker shade is
+The admin can change all six in **Admin → Website → Site settings**. Every lighter or darker shade is
 derived from them with `color-mix()` in `app/globals.css`.
 
 ## Getting started

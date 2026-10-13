@@ -9,7 +9,7 @@ export default async function SettingsPage() {
   const { data } = await supabase.from("site_settings").select("data").eq("id", 1).maybeSingle();
   return (
     <>
-      <PageTitle title="Settings & colors" description="Business info, contact details, booking link and brand colors." />
+      <PageTitle title="Site settings" description="Business info, contact details, booking link and brand colors." />
       {seeded ? <SettingsEditor initial={mergeSettings(data?.data)} /> : <SeedPanel />}
     </>
   );
