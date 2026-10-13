@@ -74,7 +74,8 @@ export const SECTION_TYPES: SectionTypeDef[] = [
         key: "images",
         label: "Photos",
         type: "images",
-        help: "Add as many as you like; they fade from one to the next. The first one shows first, the rest in a shuffled order. Leave empty for the beach illustration.",
+        placeholder: "Pup’s name (optional)",
+        help: "Add as many as you like; they fade from one to the next. The first one shows first, the rest in a shuffled order. Add the pup’s name and it shows on the card beside the photo. Leave empty for the beach illustration.",
       },
       {
         key: "seconds",

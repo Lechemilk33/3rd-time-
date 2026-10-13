@@ -2,14 +2,15 @@ import { Check } from "lucide-react";
 import { BeachScene } from "@/components/site/beach-scene";
 import { ButtonLink } from "@/components/ui/button";
 import { PawMark } from "@/components/ui/icons";
+import { HeroBadge, HeroFrame } from "@/components/sections/hero-frame";
 import { HeroSlideshow } from "@/components/sections/hero-slideshow";
-import { num, str, strings } from "@/components/sections/helpers";
+import { num, photos as photoList, str, strings } from "@/components/sections/helpers";
 import type { SectionData } from "@/lib/types";
 import { safeHref } from "@/lib/utils";
 
 export function HeroSection({ data }: { data: SectionData }) {
   // Photos (older pages saved a single "image").
-  const photos = Array.isArray(data.images) ? strings(data, "images") : [str(data, "image")].filter(Boolean);
+  const photos = Array.isArray(data.images) ? photoList(data, "images") : str(data, "image") ? [{ url: str(data, "image"), name: "" }] : [];
   const seconds = Math.min(15, Math.max(3, num(data, "seconds", 5)));
   const badges = strings(data, "badges");
 
@@ -56,22 +57,13 @@ export function HeroSection({ data }: { data: SectionData }) {
           ) : null}
         </div>
 
-        <div className="relative mx-auto w-full max-w-xl">
-          <div className="absolute -right-2 -bottom-2 h-full w-full rounded-[2.5rem] bg-sun sm:-right-4 sm:-bottom-4" aria-hidden />
-          <div className="relative aspect-[4/3] overflow-hidden rounded-[2.5rem] border-4 border-white bg-sea-100 shadow-xl">
-            {photos.length ? <HeroSlideshow images={photos} seconds={seconds} /> : <BeachScene />}
-          </div>
-          <div className="animate-float absolute -bottom-5 -left-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-lg sm:-left-6">
-            <span className="grid size-9 place-items-center rounded-full bg-sea-100">
-              <PawMark className="size-5 text-ocean" />
-            </span>
-            <span className="text-sm leading-tight font-bold text-ink">
-              Tails wagging
-              <br />
-              <span className="font-semibold text-ink-600">in Ocean Beach</span>
-            </span>
-          </div>
-        </div>
+        {photos.length ? (
+          <HeroSlideshow photos={photos} seconds={seconds} />
+        ) : (
+          <HeroFrame badge={<HeroBadge title="Tails wagging" subtitle="in Ocean Beach" />}>
+            <BeachScene />
+          </HeroFrame>
+        )}
       </div>
     </section>
   );

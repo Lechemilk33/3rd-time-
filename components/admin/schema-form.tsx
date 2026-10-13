@@ -152,7 +152,25 @@ function SchemaField({
   }
 }
 
-/** Several photos: upload many at once, drag (or use the arrows) to reorder, remove any. */
+type NamedPhoto = { url: string; name: string };
+
+/** Older pages saved plain URLs; now each photo can carry a name. */
+function readPhotos(value: unknown): NamedPhoto[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((p): NamedPhoto[] => {
+    if (typeof p === "string") return p ? [{ url: p, name: "" }] : [];
+    if (p && typeof p === "object" && typeof (p as NamedPhoto).url === "string" && (p as NamedPhoto).url) {
+      const { url, name } = p as NamedPhoto;
+      return [{ url, name: typeof name === "string" ? name : "" }];
+    }
+    return [];
+  });
+}
+
+/**
+ * Several photos: upload many at once, drag (or use the arrows) to reorder, remove any. With a
+ * placeholder on the field, each photo also gets a name box (e.g. the pup in it).
+ */
 function ImagesField({
   field,
   value,
@@ -164,15 +182,16 @@ function ImagesField({
   onChange: (value: unknown) => void;
   imageFolder: string;
 }) {
-  const urls = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
+  const items = readPhotos(value);
+  const named = Boolean(field.placeholder);
   const [pending, setPending] = useState<{ key: string; preview: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Uploads finish later: add them to whatever the list is by then, not what it was when they started.
-  const latest = useRef({ urls, onChange });
+  const latest = useRef({ items, onChange });
   useEffect(() => {
-    latest.current = { urls, onChange };
+    latest.current = { items, onChange };
   });
 
   async function add(files: FileList | null) {
@@ -184,15 +203,15 @@ function ImagesField({
     const results = await Promise.allSettled(list.map((f) => uploadImage(f, imageFolder, 1800)));
     batch.forEach((b) => URL.revokeObjectURL(b.preview));
     setPending((p) => p.filter((x) => !batch.some((b) => b.key === x.key)));
-    const done = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.url] : []));
-    if (done.length) latest.current.onChange([...latest.current.urls, ...done]);
+    const done = results.flatMap((r) => (r.status === "fulfilled" ? [{ url: r.value.url, name: "" }] : []));
+    if (done.length) latest.current.onChange([...latest.current.items, ...done]);
     const failed = results.length - done.length;
     if (failed) setError(`${failed} photo${failed === 1 ? "" : "s"} didn’t upload. Try again.`);
   }
 
   const move = (from: number, to: number) => {
-    if (to < 0 || to >= urls.length || from === to) return;
-    const next = [...urls];
+    if (to < 0 || to >= items.length || from === to) return;
+    const next = [...items];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
     onChange(next);
@@ -203,55 +222,69 @@ function ImagesField({
       <p className="mb-1 text-sm font-bold">{field.label}</p>
       {field.help ? <p className="mb-3 text-sm text-ink-600">{field.help}</p> : null}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {urls.map((url, i) => (
+        {items.map((item, i) => (
           <li
-            key={url}
-            draggable
-            onDragStart={() => setDragFrom(i)}
+            key={item.url}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
               if (dragFrom != null) move(dragFrom, i);
               setDragFrom(null);
             }}
-            onDragEnd={() => setDragFrom(null)}
-            className={cn(
-              "group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl border-2 bg-sea-50",
-              dragFrom === i ? "border-ocean opacity-60" : "border-ink-100",
-            )}
+            className="space-y-1.5"
           >
-            <Photo src={url} alt={`Photo ${i + 1}`} className="h-full w-full" draggable={false} />
-            {i === 0 ? (
-              <span className="absolute top-2 left-2 rounded-full bg-sun px-2 py-0.5 text-[11px] font-extrabold">Shows first</span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => onChange(urls.filter((_, j) => j !== i))}
-              aria-label={`Remove photo ${i + 1}`}
-              className="absolute top-1.5 right-1.5 grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-red-700"
+            <div
+              draggable
+              onDragStart={() => setDragFrom(i)}
+              onDragEnd={() => setDragFrom(null)}
+              className={cn(
+                "group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl border-2 bg-sea-50",
+                dragFrom === i ? "border-ocean opacity-60" : "border-ink-100",
+              )}
             >
-              <X className="size-4" aria-hidden />
-            </button>
-            <div className="absolute inset-x-1.5 bottom-1.5 flex justify-between">
+              <Photo src={item.url} alt={item.name || `Photo ${i + 1}`} className="h-full w-full" draggable={false} />
+              {i === 0 ? (
+                <span className="absolute top-2 left-2 rounded-full bg-sun px-2 py-0.5 text-[11px] font-extrabold">Shows first</span>
+              ) : null}
               <button
                 type="button"
-                onClick={() => move(i, i - 1)}
-                disabled={i === 0}
-                aria-label={`Move photo ${i + 1} earlier`}
-                className="grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-ink disabled:invisible"
+                onClick={() => onChange(items.filter((_, j) => j !== i))}
+                aria-label={`Remove photo ${i + 1}`}
+                className="absolute top-1.5 right-1.5 grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-red-700"
               >
-                <ArrowLeft className="size-4" aria-hidden />
+                <X className="size-4" aria-hidden />
               </button>
-              <button
-                type="button"
-                onClick={() => move(i, i + 1)}
-                disabled={i === urls.length - 1}
-                aria-label={`Move photo ${i + 1} later`}
-                className="grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-ink disabled:invisible"
-              >
-                <ArrowRight className="size-4" aria-hidden />
-              </button>
+              <div className="absolute inset-x-1.5 bottom-1.5 flex justify-between">
+                <button
+                  type="button"
+                  onClick={() => move(i, i - 1)}
+                  disabled={i === 0}
+                  aria-label={`Move photo ${i + 1} earlier`}
+                  className="grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-ink disabled:invisible"
+                >
+                  <ArrowLeft className="size-4" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(i, i + 1)}
+                  disabled={i === items.length - 1}
+                  aria-label={`Move photo ${i + 1} later`}
+                  className="grid size-8 place-items-center rounded-full bg-white/95 text-ink-600 shadow transition hover:text-ink disabled:invisible"
+                >
+                  <ArrowRight className="size-4" aria-hidden />
+                </button>
+              </div>
             </div>
+            {named ? (
+              <Input
+                value={item.name}
+                maxLength={40}
+                placeholder={field.placeholder}
+                aria-label={`Name for photo ${i + 1}`}
+                className="px-3 py-1.5 text-sm"
+                onChange={(e) => onChange(items.map((it, j) => (j === i ? { ...it, name: e.target.value } : it)))}
+              />
+            ) : null}
           </li>
         ))}
         {pending.map((p) => (
@@ -274,7 +307,7 @@ function ImagesField({
             className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-sea-200 bg-sea-50/60 text-ink-600 transition hover:border-ocean hover:text-ocean"
           >
             <ImagePlus className="size-7" aria-hidden />
-            <span className="text-sm font-bold">{urls.length ? "Add more" : "Add photos"}</span>
+            <span className="text-sm font-bold">{items.length ? "Add more" : "Add photos"}</span>
             <span className="text-xs">Pick several at once</span>
           </button>
         </li>
