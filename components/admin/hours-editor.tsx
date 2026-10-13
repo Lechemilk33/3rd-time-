@@ -20,7 +20,7 @@ import { tint } from "@/components/calendar/context";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { Popover } from "@/components/ui/popover";
-import type { HoursBlock, Walker } from "@/lib/booking";
+import type { BookingWindow, HoursBlock, Walker } from "@/lib/booking";
 import { minuteLabel } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -93,10 +93,13 @@ export function HoursEditor({
   walkers,
   initial,
   services,
+  windows = [],
 }: {
   walkers: Walker[];
   initial: HoursBlock[];
   services: HoursService[];
+  /** Arrival windows, shown down the side of the week for reference. */
+  windows?: BookingWindow[];
 }) {
   const [blocks, setBlocks] = useState(initial);
   const [saved, setSaved] = useState(initial);
@@ -254,6 +257,7 @@ export function HoursEditor({
           blocks={blocks}
           walker={walker}
           services={services}
+          windows={windows}
           openId={openId}
           onOpen={setOpenId}
           onAdd={(weekday, s, e) => setOpenId(add(weekday, s, e).id)}
@@ -307,6 +311,7 @@ function WeekGrid({
   blocks,
   walker,
   services,
+  windows,
   openId,
   onOpen,
   onAdd,
@@ -319,6 +324,7 @@ function WeekGrid({
   blocks: HoursBlock[];
   walker: Walker;
   services: HoursService[];
+  windows: BookingWindow[];
   openId: string | null;
   onOpen: (id: string | null) => void;
   onAdd: (weekday: number, start: number, end: number) => void;
@@ -504,6 +510,18 @@ function WeekGrid({
               style={{ top: (m - lo) * PX }}
             >
               {m === lo ? "" : minuteLabel(m, true)}
+            </span>
+          ))}
+          {windows.map((w) => (
+            <span
+              key={w.id}
+              title={`${w.label} arrival window`}
+              className="absolute left-1 flex w-3.5 items-center justify-center overflow-hidden rounded-full bg-sea-100"
+              style={{ top: (w.start_minute - lo) * PX + 2, height: Math.max(0, (w.end_minute - w.start_minute) * PX - 4) }}
+            >
+              <span className="rotate-180 text-[9px] font-extrabold tracking-wider whitespace-nowrap text-ocean uppercase [writing-mode:vertical-rl]">
+                {w.label}
+              </span>
             </span>
           ))}
         </div>

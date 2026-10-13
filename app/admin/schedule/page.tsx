@@ -1,12 +1,7 @@
 import { adminData } from "@/app/admin/_lib";
 import { HoursEditor } from "@/components/admin/hours-editor";
-import {
-  CalendarSyncCard,
-  EmailCard,
-  RulesEditor,
-  TimeOffEditor,
-  WindowsEditor,
-} from "@/components/admin/schedule-editor";
+import { CalendarSyncCard, EmailCard, RulesEditor, TimeOffEditor } from "@/components/admin/schedule-editor";
+import { WindowsEditor } from "@/components/admin/windows-editor";
 import { PageTitle } from "@/components/dashboard/shell";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -32,6 +27,9 @@ export default async function SchedulePage() {
     getOrigin(),
   ]);
 
+  const hours = (hoursRes.data ?? []) as HoursBlock[];
+  const activeWalkers = new Set(config.walkers.filter((w) => w.active).map((w) => w.profile_id));
+
   return (
     <>
       <PageTitle
@@ -52,18 +50,21 @@ export default async function SchedulePage() {
               for park trips), or copy it to other days.
             </p>
           </div>
-          <HoursEditor walkers={config.walkers} initial={(hoursRes.data ?? []) as HoursBlock[]} services={servicesRes.data ?? []} />
+          <HoursEditor
+            walkers={config.walkers}
+            initial={hours}
+            services={servicesRes.data ?? []}
+            windows={config.windows.filter((w) => w.active)}
+          />
         </Card>
+        <WindowsEditor windows={config.windows} hours={hours.filter((h) => activeWalkers.has(h.walker_id))} />
         <TimeOffEditor
           entries={timeOffRes.data ?? []}
           walkers={config.walkers}
           windows={config.windows.filter((w) => w.active)}
           today={today}
         />
-        <div className="grid gap-6 xl:grid-cols-2">
-          <RulesEditor settings={config.settings} />
-          <WindowsEditor windows={config.windows} />
-        </div>
+        <RulesEditor settings={config.settings} />
         <div className="grid gap-6 xl:grid-cols-2">
           <CalendarSyncCard origin={origin} token={feedRes.data?.token ?? null} />
           <EmailCard configured={Boolean(emailRes.data)} email={admin.email} />

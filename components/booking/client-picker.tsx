@@ -131,6 +131,7 @@ export function ClientPicker({
           type="button"
           onClick={() => {
             onClear();
+            setOpen(true);
             requestAnimationFrame(() => inputRef.current?.focus());
           }}
           className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold text-ocean hover:bg-white"
@@ -155,7 +156,8 @@ export function ClientPicker({
         autoFocus={autoFocus}
         value={query}
         placeholder="Search by pup, breed, owner, phone, email or address…"
-        onFocus={() => setOpen(true)}
+        // The list opens when someone clicks or types in the box, not just because it has focus.
+        onClick={() => setOpen(true)}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         onChange={(e) => {
           setQuery(e.target.value);

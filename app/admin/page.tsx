@@ -154,6 +154,7 @@ export default async function AdminHome() {
           ) : null}
         </div>
         <div className="space-y-6">
+          {setup.every((item) => item.done) ? null : (
           <Card>
             <h2 className="mb-3 text-xl font-semibold">Setup checklist</h2>
             <ul className="space-y-2">
@@ -164,6 +165,7 @@ export default async function AdminHome() {
               ))}
             </ul>
           </Card>
+          )}
           {(intake.count ?? 0) > 0 ? (
             <Card>
               <Link href="/admin/clients?filter=review" className="flex items-center gap-3">
@@ -181,18 +183,6 @@ export default async function AdminHome() {
           ) : null}
         </div>
       </div>
-
-      <Card className="mt-6">
-        <h2 className="mb-3 text-xl font-semibold">Quick edits</h2>
-        <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/admin/schedule" variant="outline" size="sm">Availability &amp; time off</ButtonLink>
-          <ButtonLink href="/admin/pages" variant="outline" size="sm">Edit pages</ButtonLink>
-          <ButtonLink href="/admin/gallery" variant="outline" size="sm">Upload photos</ButtonLink>
-          <ButtonLink href="/admin/services" variant="outline" size="sm">Update prices</ButtonLink>
-          <ButtonLink href="/admin/intake-form" variant="outline" size="sm">Edit intake form</ButtonLink>
-          <ButtonLink href="/" variant="ghost" size="sm" target="_blank">View website</ButtonLink>
-        </div>
-      </Card>
     </>
   );
 }

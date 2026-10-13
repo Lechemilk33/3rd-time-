@@ -1,14 +1,12 @@
 "use client";
 
-import { CalendarOff, Check, Link2, Mail, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarOff, Check, Link2, Mail, RefreshCw, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   addTimeOff,
   deleteTimeOff,
-  deleteWindow,
   resetCalendarFeed,
   saveBookingRules,
-  saveWindow,
   sendTestEmail,
   type RulesInput,
 } from "@/app/admin/_actions/schedule";
@@ -18,9 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/form";
 import type { BookingSettings, BookingWindow, Walker } from "@/lib/booking";
-import { minuteLabel, minutesToTimeInput, shortDate, timeToMinutes, type Ymd } from "@/lib/dates";
+import { minuteLabel, shortDate, type Ymd } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -132,114 +129,6 @@ export function RulesEditor({ settings }: { settings: BookingSettings }) {
         <Result result={result} />
       </div>
     </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------------------------
-// Windows
-// ---------------------------------------------------------------------------------------------
-
-export function WindowsEditor({ windows }: { windows: BookingWindow[] }) {
-  const [adding, setAdding] = useState(false);
-  // Rows remount after a change, so a removed window reports back up here.
-  const [removed, setRemoved] = useState<ActionResult | null>(null);
-  return (
-    <Card className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">Time-of-day choices</h2>
-        <p className="text-sm text-ink-600">
-          Clients booking a walk or drop-in pick one of these, and the visit is fit into the walker’s hours inside it. You can
-          pin an exact time from the calendar.
-        </p>
-      </div>
-      <ul className="space-y-2">
-        {windows.map((w) => (
-          <WindowRow key={`${w.id}-${w.start_minute}-${w.end_minute}-${w.label}-${w.active}`} window={w} onRemoved={setRemoved} />
-        ))}
-      </ul>
-      <Result result={removed} />
-      {adding ? (
-        <WindowRow window={null} onDone={() => setAdding(false)} />
-      ) : (
-        <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-          <Plus className="size-4" aria-hidden /> Add a choice
-        </Button>
-      )}
-    </Card>
-  );
-}
-
-function WindowRow({
-  window: w,
-  onDone,
-  onRemoved,
-}: {
-  window: BookingWindow | null;
-  onDone?: () => void;
-  onRemoved?: (r: ActionResult) => void;
-}) {
-  const [label, setLabel] = useState(w?.label ?? "Evening");
-  const [start, setStart] = useState(minutesToTimeInput(w?.start_minute ?? 17 * 60));
-  const [end, setEnd] = useState(minutesToTimeInput(w?.end_minute ?? 19 * 60));
-  const [active, setActive] = useState(w?.active ?? true);
-  const { pending, result, run } = useAction();
-  const startMin = timeToMinutes(`${start}:00`) ?? 0;
-  const endMin = end === "00:00" ? 1440 : (timeToMinutes(`${end}:00`) ?? 0);
-  const dirty = !w || label !== w.label || startMin !== w.start_minute || endMin !== w.end_minute || active !== w.active;
-
-  return (
-    <li className={cn("rounded-2xl border-2 p-3", w && !w.active ? "border-dashed border-ink-100 bg-ink-100/20" : "border-ink-100")}>
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label="Name" htmlFor={`wl-${w?.id ?? "new"}`} className="min-w-36 flex-1">
-          <Input id={`wl-${w?.id ?? "new"}`} value={label} onChange={(e) => setLabel(e.target.value)} className="py-2" />
-        </Field>
-        <Field label="From" htmlFor={`ws-${w?.id ?? "new"}`}>
-          <Input id={`ws-${w?.id ?? "new"}`} type="time" step={900} value={start} onChange={(e) => setStart(e.target.value)} className="w-32 py-2" />
-        </Field>
-        <Field label="To" htmlFor={`we-${w?.id ?? "new"}`}>
-          <Input id={`we-${w?.id ?? "new"}`} type="time" step={900} value={end} onChange={(e) => setEnd(e.target.value)} className="w-32 py-2" />
-        </Field>
-        <label className="flex items-center gap-2 pb-2.5 text-sm font-bold">
-          <input type="checkbox" className="size-4 accent-ocean" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Bookable
-        </label>
-        <div className="flex gap-1 pb-0.5">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={pending || !dirty}
-            onClick={() =>
-              run(
-                () => saveWindow({ id: w?.id, label, start_minute: startMin, end_minute: endMin, active }),
-                (r) => r.ok && onDone?.(),
-              )
-            }
-          >
-            {w ? "Save" : "Add"}
-          </Button>
-          {w ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={`Delete ${w.label}`}
-              disabled={pending}
-              onClick={() => {
-                if (confirm(`Remove the ${w.label} window? If it already has visits, it’ll be hidden from clients instead so your records stay intact.`))
-                  run(() => deleteWindow(w.id), (r) => r.ok && onRemoved?.(r));
-              }}
-            >
-              <Trash2 className="size-4 text-red-700" aria-hidden />
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={onDone}>
-              Cancel
-            </Button>
-          )}
-        </div>
-      </div>
-      {result && !result.ok ? <p className="mt-2 text-sm font-bold text-red-700">{result.error}</p> : null}
-      {w && !w.active ? <p className="mt-2 text-xs font-bold text-ink-400">Hidden from clients</p> : null}
-    </li>
   );
 }
 

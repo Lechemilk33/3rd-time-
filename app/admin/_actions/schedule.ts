@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { rpcError } from "@/lib/booking-server";
 import { isYmd } from "@/lib/dates";
+import type { BookingWindow } from "@/lib/booking";
 import type { ActionResult } from "@/lib/types";
 import { adminClient, clampText } from "./shared";
 
@@ -47,36 +48,63 @@ export async function saveBookingRules(input: RulesInput): Promise<ActionResult>
   return { ok: true, message: "Booking rules saved." };
 }
 
-export type WindowInput = { id?: string; label: string; start_minute: number; end_minute: number; active: boolean };
+export type WindowInput = { id: string | null; label: string; start_minute: number; end_minute: number; active: boolean };
 
-export async function saveWindow(input: WindowInput): Promise<ActionResult> {
-  const supabase = await adminClient();
-  const label = clampText(input.label, 40).trim();
-  const start = int(input.start_minute, 0, 1439, 480);
-  const end = int(input.end_minute, 1, 1440, 660);
-  if (!label) return { ok: false, error: "Give the window a name, like “Midday”." };
-  if (end <= start) return { ok: false, error: "The window has to end after it starts." };
-  const row = { label, start_minute: start, end_minute: end, active: Boolean(input.active), position: Math.floor(start / 15) };
-  const { error } =
-    input.id && UUID.test(input.id)
-      ? await supabase.from("booking_windows").update(row).eq("id", input.id)
-      : await supabase.from("booking_windows").insert(row);
-  if (error) return { ok: false, error: rpcError(error) };
-  refresh();
-  return { ok: true, message: "Saved." };
-}
+/**
+ * Saves every arrival window at once. Windows taken off the list are deleted, or hidden from clients
+ * when visits already use them so past bookings keep their label.
+ */
+export async function saveWindows(
+  input: WindowInput[],
+  removedIds: string[],
+): Promise<ActionResult & { windows?: BookingWindow[] }> {
+  if (!Array.isArray(input) || input.length > 20) return { ok: false, error: "That’s more windows than we can save." };
+  const rows = input.map((w) => ({
+    id: w.id && UUID.test(w.id) ? w.id : null,
+    label: clampText(w.label, 40).trim(),
+    start_minute: int(w.start_minute, 0, 1425, 480),
+    end_minute: int(w.end_minute, 15, 1440, 660),
+    active: Boolean(w.active),
+  }));
+  if (rows.some((r) => !r.label)) return { ok: false, error: "Give every window a name, like “Morning”." };
+  if (rows.some((r) => r.end_minute <= r.start_minute)) return { ok: false, error: "A window has to end after it starts." };
+  const live = rows.filter((r) => r.active).sort((a, b) => a.start_minute - b.start_minute);
+  for (let i = 1; i < live.length; i++) {
+    if (live[i].start_minute < live[i - 1].end_minute) {
+      return { ok: false, error: `${live[i - 1].label} and ${live[i].label} overlap. Windows can touch but not overlap.` };
+    }
+  }
+  if (!live.length) return { ok: false, error: "Clients need at least one window to book walks and drop-ins." };
 
-/** Windows with visits on them are hidden instead of deleted, so history stays intact. */
-export async function deleteWindow(id: string): Promise<ActionResult> {
-  if (!UUID.test(id)) return { ok: false, error: "Not found." };
   const supabase = await adminClient();
-  const { count } = await supabase.from("bookings").select("id", { count: "exact", head: true }).eq("window_id", id);
-  const { error } = count
-    ? await supabase.from("booking_windows").update({ active: false }).eq("id", id)
-    : await supabase.from("booking_windows").delete().eq("id", id);
-  if (error) return { ok: false, error: rpcError(error) };
+  const ordered = [...rows].sort((a, b) => a.start_minute - b.start_minute);
+  for (const [position, r] of ordered.entries()) {
+    const values = { label: r.label, start_minute: r.start_minute, end_minute: r.end_minute, active: r.active, position };
+    const { error } = r.id
+      ? await supabase.from("booking_windows").update(values).eq("id", r.id)
+      : await supabase.from("booking_windows").insert(values);
+    if (error) return { ok: false, error: rpcError(error) };
+  }
+
+  let hidden = 0;
+  for (const id of removedIds.filter((x) => UUID.test(x))) {
+    const { count } = await supabase.from("bookings").select("id", { count: "exact", head: true }).eq("window_id", id);
+    const { error } = count
+      ? await supabase.from("booking_windows").update({ active: false }).eq("id", id)
+      : await supabase.from("booking_windows").delete().eq("id", id);
+    if (error) return { ok: false, error: rpcError(error) };
+    if (count) hidden++;
+  }
+
+  const { data } = await supabase.from("booking_windows").select("*").order("position").order("start_minute");
   refresh();
-  return { ok: true, message: count ? "Hidden (it has visits, so we kept it for your records)." : "Deleted." };
+  return {
+    ok: true,
+    windows: (data ?? []) as BookingWindow[],
+    message: hidden
+      ? `Saved. ${hidden === 1 ? "One window has" : `${hidden} windows have`} past visits, so it’s hidden from clients instead of deleted.`
+      : "Arrival windows saved.",
+  };
 }
 
 export type WalkerInput = { profile_id: string; display_name: string; color: string; active: boolean };

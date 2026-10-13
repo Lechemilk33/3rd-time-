@@ -313,7 +313,6 @@ export function AdminBookingForm({
               <ClientPicker
                 clients={clients}
                 selected={client}
-                autoFocus={!client}
                 onSelect={(c: PickerClient, pet?: PickerPet) => {
                   setClient(c);
                   setPetIds(pet ? [pet.id] : c.pets.length === 1 ? [c.pets[0].id] : []);
