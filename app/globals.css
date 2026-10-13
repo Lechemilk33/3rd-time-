@@ -160,16 +160,7 @@
   }
 }
 
-/* Home page slideshow: each photo drifts in slowly while it's up and fades in over the last one. */
-@keyframes hero-drift {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(1.07);
-  }
-}
-
+/* Home page slideshow: each photo fades in over the last one. */
 @keyframes hero-fade {
   from {
     opacity: 0;
@@ -179,21 +170,6 @@
   }
 }
 
-.hero-slide {
-  animation: hero-drift var(--hero-drift, 7s) ease-out both;
-}
-
-.hero-slide-in {
-  animation:
-    hero-fade 1.2s ease-in-out both,
-    hero-drift var(--hero-drift, 7s) ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-slide {
-    animation: none;
-  }
-  .hero-slide-in {
-    animation: hero-fade 0.6s ease-in-out both;
-  }
+.hero-fade-in {
+  animation: hero-fade 0.9s ease-in-out both;
 }

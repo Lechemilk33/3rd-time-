@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- photos are resized before upload and served from Supabase Storage */
 import { Pause, Play } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HeroBadge, HeroFrame } from "@/components/sections/hero-frame";
 import type { HeroPhoto } from "@/components/sections/helpers";
 import { cn } from "@/lib/utils";
@@ -17,46 +17,80 @@ function shuffled(n: number) {
 }
 
 /**
- * The home page photos, fading from one to the next every few seconds, with the pup's name (when
- * one was added) on the little card beside them. The first photo always loads first (it's what
- * search engines and slow phones see); the rest come in a shuffled order that's different each
- * visit, each loaded just before its turn. Pauses while hovered, while the tab is hidden, or with
- * the pause button, and doesn't advance on its own for people who've asked for less motion.
+ * One photo, shown whole: tall and wide photos sit on a soft, blurred copy of themselves instead
+ * of being cropped to fit the frame.
+ */
+function Slide({
+  photo,
+  fadeIn,
+  first,
+  onReady,
+}: {
+  photo: HeroPhoto;
+  fadeIn: boolean;
+  first: boolean;
+  onReady: (url: string) => void;
+}) {
+  return (
+    <div className={cn("absolute inset-0", fadeIn && "hero-fade-in")}>
+      <img src={photo.url} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl brightness-95" />
+      <img
+        src={photo.url}
+        alt={photo.name}
+        loading="eager"
+        fetchPriority={first ? "high" : "auto"}
+        ref={(el) => {
+          if (el?.complete && el.naturalWidth) onReady(photo.url);
+        }}
+        onLoad={() => onReady(photo.url)}
+        className="absolute inset-0 h-full w-full object-contain"
+      />
+    </div>
+  );
+}
+
+/**
+ * The home page photos, changing every few seconds with a crossfade, and the pup's name (when one
+ * was added) on the little card beside them. The first photo always shows first (it's what search
+ * engines and slow phones see); the rest follow in a shuffled order that's different each visit.
+ * The next photo loads in the background, and the slideshow waits for it rather than fading to a
+ * half-loaded picture. The pause button stops it, and it holds while the tab is in the background.
  */
 export function HeroSlideshow({ photos, seconds }: { photos: HeroPhoto[]; seconds: number }) {
   const n = photos.length;
-  const [order, setOrder] = useState(() => photos.map((_, i) => i));
-  const [warm, setWarm] = useState(false);
+  const [order, setOrder] = useState<number[] | null>(null);
   const [slide, setSlide] = useState({ current: 0, prev: -1, key: 0 });
   const [paused, setPaused] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const loaded = useRef(new Set<string>());
+  const ready = (url: string) => loaded.current.add(url);
 
-  const nextOf = (i: number) => order[(order.indexOf(i) + 1) % n];
-
-  // After the first photo is up: pick this visit's order and start loading the next one.
+  // Once the page is up: pick this visit's order (which also starts loading the next photo).
   useEffect(() => {
     if (n < 2) return;
-    const t = setTimeout(() => {
-      setOrder(shuffled(n));
-      setWarm(true);
-    }, 600);
+    const t = setTimeout(() => setOrder(shuffled(n)), 0);
     return () => clearTimeout(t);
   }, [n]);
 
+  const next = order ? order[(order.indexOf(slide.current) + 1) % n] : -1;
+
+  // Each photo stays up for `seconds`, counted from when it appeared.
   useEffect(() => {
-    if (n < 2 || !warm || paused || hovered) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = setInterval(() => {
-      if (document.hidden) return;
-      setSlide((s) => ({ current: order[(order.indexOf(s.current) + 1) % n], prev: s.current, key: s.key + 1 }));
-    }, seconds * 1000);
-    return () => clearInterval(t);
-  }, [n, warm, paused, hovered, order, seconds]);
+    if (n < 2 || paused || next < 0) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const advance = () => {
+      // Hold while the tab is in the background or the next photo is still downloading.
+      if (document.hidden || !loaded.current.has(photos[next].url)) {
+        timer = setTimeout(advance, 250);
+        return;
+      }
+      setSlide((s) => ({ current: next, prev: s.current, key: s.key + 1 }));
+    };
+    timer = setTimeout(advance, seconds * 1000);
+    return () => clearTimeout(timer);
+  }, [n, paused, next, seconds, photos, slide.key]);
 
   const show = (i: number) => setSlide((s) => (s.current === i ? s : { current: i, prev: s.current, key: s.key + 1 }));
-  const drift = { "--hero-drift": `${seconds + 1.5}s` } as CSSProperties;
   const name = photos[slide.current]?.name;
-  const alt = (p: HeroPhoto) => p.name;
 
   return (
     <HeroFrame
@@ -69,38 +103,29 @@ export function HeroSlideshow({ photos, seconds }: { photos: HeroPhoto[]; second
         )
       }
     >
-      <div
-        className="relative h-full w-full"
-        aria-roledescription="carousel"
-        aria-label="Photos of our pups"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        {slide.prev >= 0 ? (
+      <div className="relative h-full w-full" aria-roledescription="carousel" aria-label="Photos of our pups">
+        {/* The photo underneath stays put while the new one fades in over it. */}
+        {slide.prev >= 0 ? <Slide key={`s-${slide.key - 1}`} photo={photos[slide.prev]} fadeIn={false} first={false} onReady={ready} /> : null}
+        <Slide key={`s-${slide.key}`} photo={photos[slide.current]} fadeIn={slide.key > 0} first={slide.key === 0} onReady={ready} />
+        {/* The next photo, downloading in the background so it's ready when its turn comes. */}
+        {next >= 0 && next !== slide.current ? (
           <img
-            key={`s-${slide.key - 1}`}
-            src={photos[slide.prev].url}
+            key={photos[next].url}
+            src={photos[next].url}
             alt=""
-            className="hero-slide absolute inset-0 h-full w-full object-cover"
-            style={drift}
+            aria-hidden
+            className="hidden"
+            ref={(el) => {
+              if (el?.complete && el.naturalWidth) ready(photos[next].url);
+            }}
+            onLoad={() => ready(photos[next].url)}
           />
         ) : null}
-        <img
-          key={`s-${slide.key}`}
-          src={photos[slide.current].url}
-          alt={alt(photos[slide.current])}
-          loading="eager"
-          fetchPriority={slide.key === 0 ? "high" : "auto"}
-          className={cn("absolute inset-0 h-full w-full object-cover", slide.key === 0 ? "hero-slide" : "hero-slide-in")}
-          style={drift}
-        />
-        {/* The next photo, loading in the background so it's ready when its turn comes. */}
-        {warm ? <img src={photos[nextOf(slide.current)].url} alt="" aria-hidden className="hidden" /> : null}
 
         {n > 1 ? (
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-3 bg-gradient-to-t from-ink/35 to-transparent px-4 pt-8 pb-3">
+          <div className="absolute right-3 bottom-3 flex items-center gap-2 rounded-full bg-ink/40 py-1.5 pr-1.5 pl-3 backdrop-blur-sm">
             {n <= 12 ? (
-              <div className="flex flex-wrap justify-end gap-1.5">
+              <div className="flex items-center gap-1.5">
                 {photos.map((p, i) => (
                   <button
                     key={i}
@@ -110,7 +135,7 @@ export function HeroSlideshow({ photos, seconds }: { photos: HeroPhoto[]; second
                     aria-current={slide.current === i ? "true" : undefined}
                     className={cn(
                       "h-2 rounded-full bg-white transition-all",
-                      slide.current === i ? "w-6 opacity-100" : "w-2 opacity-60 hover:opacity-90",
+                      slide.current === i ? "w-5 opacity-100" : "w-2 opacity-60 hover:opacity-90",
                     )}
                   />
                 ))}
@@ -120,7 +145,7 @@ export function HeroSlideshow({ photos, seconds }: { photos: HeroPhoto[]; second
               type="button"
               onClick={() => setPaused((p) => !p)}
               aria-label={paused ? "Play slideshow" : "Pause slideshow"}
-              className="grid size-7 place-items-center rounded-full bg-white/85 text-ink transition hover:bg-white"
+              className="grid size-7 place-items-center rounded-full bg-white/90 text-ink transition hover:bg-white"
             >
               {paused ? <Play className="size-3.5" aria-hidden /> : <Pause className="size-3.5" aria-hidden />}
             </button>
