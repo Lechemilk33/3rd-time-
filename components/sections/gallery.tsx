@@ -7,8 +7,6 @@ import { getGalleryPhotos } from "@/lib/content";
 import type { SectionData } from "@/lib/types";
 import { isExternalHref, safeHref } from "@/lib/utils";
 
-const PLACEHOLDER_TILES = ["bg-sea-100", "bg-sun-100", "bg-sand", "bg-sea-200"];
-
 export async function GallerySection({ data }: { data: SectionData }) {
   const all = await getGalleryPhotos();
   const limit = num(data, "limit", 0);
@@ -38,13 +36,10 @@ export async function GallerySection({ data }: { data: SectionData }) {
           ))}
         </ul>
       ) : (
-        <ul className="grid grid-cols-2 gap-4 md:grid-cols-4" aria-label="Photos coming soon">
-          {PLACEHOLDER_TILES.map((bg, i) => (
-            <li key={bg} className={`grid aspect-square place-items-center rounded-3xl ${bg}`}>
-              <PawMark className={`size-14 text-ink/15 ${i % 2 ? "rotate-12" : "-rotate-12"}`} />
-            </li>
-          ))}
-        </ul>
+        <div className="mx-auto flex max-w-md flex-col items-center rounded-3xl bg-sea-50 px-6 py-10 text-center">
+          <PawMark className="size-10 -rotate-12 text-sea-300" />
+          <p className="mt-3 font-semibold text-ink-600">Fresh pup photos are on the way.</p>
+        </div>
       )}
       {str(data, "buttonLabel") && buttonHref ? (
         <div className="mt-10 text-center">

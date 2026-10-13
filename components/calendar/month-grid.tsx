@@ -181,7 +181,10 @@ export function MonthGrid({
                     tabIndex={-1}
                     aria-label={`Add a booking on ${shortDate(day)}`}
                     className="absolute inset-0 cursor-cell"
-                    onClick={() => cal.create({ date: day })}
+                    // Phones: a tap on a tiny cell means "show me this day", not "start a booking".
+                    onClick={() =>
+                      window.matchMedia("(hover: none), (max-width: 639px)").matches ? onShowDay(day) : cal.create({ date: day })
+                    }
                   />
                   <div className="relative mb-1 flex items-center justify-between">
                     <button

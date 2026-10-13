@@ -104,6 +104,9 @@ export function AdminBookingForm({
   const [result, setResult] = useState<CreateBookingsResult | null>(null);
   const [pending, start] = useTransition();
   const answersRef = useRef<HTMLFormElement>(null);
+  // Answers from the last submit, reused if skipped dates are booked anyway.
+  const lastAnswers = useRef<FormData | undefined>(undefined);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   const service = services.find((s) => s.id === serviceId);
   const kind = service?.kind ?? "window";
@@ -173,32 +176,50 @@ export function AdminBookingForm({
   const who = client ? (client.full_name || client.email || "client") : guest?.name;
   const timeReady =
     kind === "window" ? (timeMode === "window" ? Boolean(windowId) : minute != null) : kind === "time" ? minute != null : kind === "stay" ? nights > 0 : true;
-  const canSubmit = Boolean(serviceId && dates.length && (client || guest?.name.trim()) && timeReady);
+  // A client with pups needs at least one picked (it's also what stops double-booking a pup).
+  const needsPup = Boolean(client && client.pets.length && !petIds.length);
+  const canSubmit = Boolean(serviceId && dates.length && (client || guest?.name.trim()) && timeReady && !needsPup);
   const noun = kind === "stay" ? "stay" : kind === "day" ? "day" : "visit";
+
+  const payload = (list: Ymd[], overbook: boolean) => ({
+    clientId: client?.id ?? null,
+    guestName: guest?.name,
+    guestEmail: guest?.email,
+    serviceId,
+    petIds: client ? petIds : [],
+    dates: list,
+    windowId: kind === "window" && timeMode === "window" ? windowId : null,
+    arrivalMinute: minute,
+    endDate: kind === "stay" ? checkOut : null,
+    walkerId: walkerId || null,
+    note,
+    force: overbook,
+    notify,
+  });
 
   function submit() {
     start(async () => {
       const answers = answersRef.current ? new FormData(answersRef.current) : undefined;
-      const res = await createBookings(
-        {
-          clientId: client?.id ?? null,
-          guestName: guest?.name,
-          guestEmail: guest?.email,
-          serviceId,
-          petIds: client ? petIds : [],
-          dates,
-          windowId: kind === "window" && timeMode === "window" ? windowId : null,
-          arrivalMinute: minute,
-          endDate: kind === "stay" ? checkOut : null,
-          walkerId: walkerId || null,
-          note,
-          force,
-          notify,
-        },
-        answers,
-      );
+      lastAnswers.current = answers;
+      setRetryError(null);
+      const res = await createBookings(payload(dates, force), answers);
       setResult(res);
       if (res.ok) window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  // Overbooking can't fix a pup that's already booked then, so those stay skipped.
+  const retryable = (result?.skipped ?? []).filter((s) => s.reason !== "already_booked").map((s) => s.date as Ymd);
+  function bookSkipped() {
+    start(async () => {
+      const res = await createBookings(payload(retryable, true), lastAnswers.current);
+      if (!res.ok) return setRetryError(res.error ?? "Couldn’t book those dates.");
+      setRetryError(null);
+      setResult((prev) => ({
+        ...res,
+        created: [...(prev?.created ?? []), ...(res.created ?? [])],
+        skipped: [...(prev?.skipped ?? []).filter((s) => s.reason === "already_booked"), ...(res.skipped ?? [])],
+      }));
     });
   }
 
@@ -225,7 +246,13 @@ export function AdminBookingForm({
                 </li>
               ))}
             </ul>
-            <p className="mt-2">Tick “Allow overbooking” to book them anyway.</p>
+            {retryable.length ? (
+              <Button size="sm" variant="outline" className="mt-3" disabled={pending} onClick={bookSkipped}>
+                {pending ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+                Book {retryable.length === 1 ? "it" : `these ${retryable.length}`} anyway (overbook)
+              </Button>
+            ) : null}
+            {retryError ? <p className="mt-2 font-bold text-red-700">{retryError}</p> : null}
           </Notice>
         ) : null}
         <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -598,6 +625,7 @@ export function AdminBookingForm({
           </dl>
           {date < today ? <Notice tone="warning">That date is in the past.</Notice> : null}
           {result?.error ? <Notice tone="error">{result.error}</Notice> : null}
+          {needsPup ? <p className="text-center text-sm font-bold text-ink-600">Pick at least one pup.</p> : null}
           <Button className="w-full" size="lg" disabled={!canSubmit || pending} onClick={submit}>
             {pending ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : null}
             {dates.length > 1 ? `Book ${dates.length} ${noun}s` : `Book ${noun}`}

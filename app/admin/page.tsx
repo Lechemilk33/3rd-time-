@@ -57,7 +57,7 @@ export default async function AdminHome() {
 
   const stats = [
     { label: "On today", value: todays.length, href: `/admin/calendar?view=day&date=${today}`, icon: <CalendarDays className="size-5" /> },
-    { label: "Requests to confirm", value: pending, href: "/admin/calendar", icon: <Hourglass className="size-5" />, hot: pending > 0 },
+    { label: "Requests to confirm", value: pending, href: "/admin/calendar?requests=1", icon: <Hourglass className="size-5" />, hot: pending > 0 },
     { label: "Clients", value: clients.count ?? 0, href: "/admin/clients", icon: <Users className="size-5" /> },
     { label: "New messages", value: messages.count ?? 0, href: "/admin/messages", icon: <Inbox className="size-5" /> },
   ];
@@ -137,7 +137,7 @@ export default async function AdminHome() {
                 <h2 className="flex items-center gap-2 text-xl font-semibold">
                   <Hourglass className="size-5 text-amber-600" aria-hidden /> Waiting for you
                 </h2>
-                <Link href="/admin/calendar" className="text-sm font-bold text-ocean hover:underline">
+                <Link href="/admin/calendar?requests=1" className="text-sm font-bold text-ocean hover:underline">
                   Review
                 </Link>
               </div>
@@ -166,7 +166,7 @@ export default async function AdminHome() {
           </Card>
           {(intake.count ?? 0) > 0 ? (
             <Card>
-              <Link href="/admin/clients" className="flex items-center gap-3">
+              <Link href="/admin/clients?filter=review" className="flex items-center gap-3">
                 <span className="grid size-10 place-items-center rounded-2xl bg-sun-100">
                   <ClipboardList className="size-5" aria-hidden />
                 </span>

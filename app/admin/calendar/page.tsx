@@ -52,6 +52,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/admin/c
       walkers={config.walkers}
       timeZone={tz}
       initialOpenId={focusId}
+      showRequests={sp.requests === "1"}
       fields={form?.fields ?? []}
     />
   );

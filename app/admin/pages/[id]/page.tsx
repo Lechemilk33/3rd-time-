@@ -8,6 +8,7 @@ import { SectionsEditor } from "@/components/admin/sections-editor";
 import { PageTitle } from "@/components/dashboard/shell";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import type { Page, Section } from "@/lib/types";
 
 export default async function EditPagePage({ params }: PageProps<"/admin/pages/[id]">) {
@@ -51,9 +52,12 @@ export default async function EditPagePage({ params }: PageProps<"/admin/pages/[
           <h2 className="font-semibold">Delete this page</h2>
           <p className="mt-1 mb-4 text-sm text-ink-600">Removes the page and all of its sections. This can’t be undone.</p>
           <form action={deletePage.bind(null, page.id)}>
-            <button type="submit" className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50">
+            <ConfirmSubmit
+              message={`Delete “${page.title}” and all its sections? This can’t be undone.`}
+              className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50"
+            >
               <Trash2 className="size-4" aria-hidden /> Delete page
-            </button>
+            </ConfirmSubmit>
           </form>
         </Card>
       ) : null}

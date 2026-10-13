@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useActionState, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { deletePet, savePet } from "@/app/portal/actions";
 import { ImageUpload } from "@/components/image-upload";
 import { Button } from "@/components/ui/button";
@@ -10,18 +10,21 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { Pet } from "@/lib/types";
+import { useFormAction } from "@/lib/use-form-action";
 
-export function PetForm({ pet, userId }: { pet?: Pet; userId: string }) {
-  const [state, action] = useActionState(savePet, null);
+export function PetForm({ pet, userId, next }: { pet?: Pet; userId: string; next?: string }) {
+  const [state, onSubmit, pending] = useFormAction(savePet);
   const [photo, setPhoto] = useState(pet?.photo_url ?? "");
+  const [uploading, setUploading] = useState(false);
   const [deleting, startDelete] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const yesNo = pet?.spayed_neutered == null ? "" : pet.spayed_neutered ? "yes" : "no";
 
   return (
-    <form action={action} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6">
       {pet ? <input type="hidden" name="id" value={pet.id} /> : null}
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <Card className="grid gap-6 md:grid-cols-[16rem_1fr]">
         <div>
           <p className="mb-2 text-sm font-bold">Photo</p>
@@ -32,6 +35,7 @@ export function PetForm({ pet, userId }: { pet?: Pet; userId: string }) {
             name="photo_url"
             label="Add a photo"
             aspect="aspect-square"
+            onBusyChange={setUploading}
           />
         </div>
         <div className="grid content-start gap-4 sm:grid-cols-2">
@@ -103,8 +107,8 @@ export function PetForm({ pet, userId }: { pet?: Pet; userId: string }) {
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       {deleteError ? <Notice tone="error">{deleteError}</Notice> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SubmitButton size="lg" pendingText="Saving…">
-          {pet ? "Save changes" : "Add pup"}
+        <SubmitButton size="lg" pendingText="Saving…" pending={pending} disabled={uploading}>
+          {uploading ? "Uploading photo…" : pet ? "Save changes" : "Add pup"}
         </SubmitButton>
         {pet ? (
           <Button

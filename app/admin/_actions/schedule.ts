@@ -117,16 +117,33 @@ export async function addTimeOff(input: TimeOffInput): Promise<ActionResult> {
   if (!isYmd(input.start_date) || !isYmd(input.end_date)) return { ok: false, error: "Pick the dates." };
   if (input.end_date < input.start_date) return { ok: false, error: "The end date is before the start date." };
   const supabase = await adminClient();
+  const walkerId = input.walker_id && UUID.test(input.walker_id) ? input.walker_id : null;
+  const windowId = input.window_id && UUID.test(input.window_id) ? input.window_id : null;
   const { error } = await supabase.from("time_off").insert({
-    walker_id: input.walker_id && UUID.test(input.walker_id) ? input.walker_id : null,
-    window_id: input.window_id && UUID.test(input.window_id) ? input.window_id : null,
+    walker_id: walkerId,
+    window_id: windowId,
     start_date: input.start_date,
     end_date: input.end_date,
     note: clampText(input.note, 200).trim() || null,
   });
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
-  return { ok: true, message: "Time off added. Clients can’t book those times." };
+  // Time off only stops new bookings, so point out anything already on the books then.
+  let booked = supabase
+    .from("bookings")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["scheduled", "requested"])
+    .lte("service_date", input.end_date)
+    .gte("end_date", input.start_date);
+  if (walkerId) booked = booked.eq("walker_id", walkerId);
+  if (windowId) booked = booked.eq("window_id", windowId);
+  const { count } = await booked;
+  return {
+    ok: true,
+    message: count
+      ? `Blocked. ${count} booking${count === 1 ? " is" : "s are"} already on those days — check the calendar if they need moving.`
+      : "Blocked. Clients can’t book those times.",
+  };
 }
 
 export async function deleteTimeOff(id: string): Promise<ActionResult> {

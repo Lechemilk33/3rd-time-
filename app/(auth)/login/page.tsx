@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
-import { AuthFormSkeleton, LoginForm } from "@/components/auth/forms";
+import { AuthFormSkeleton, AuthSwitchLink, LoginForm } from "@/components/auth/forms";
 import { SetupNotice } from "@/components/auth/setup-notice";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -19,9 +18,9 @@ export default function LoginPage() {
       </Suspense>
       <p className="mt-8 text-ink-600">
         New here?{" "}
-        <Link href="/signup" className="font-bold text-ocean hover:underline">
-          Create an account
-        </Link>
+        <Suspense fallback={<span className="font-bold text-ocean">Create an account</span>}>
+          <AuthSwitchLink href="/signup">Create an account</AuthSwitchLink>
+        </Suspense>
       </p>
     </>
   );

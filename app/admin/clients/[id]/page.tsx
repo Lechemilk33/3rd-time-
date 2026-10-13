@@ -19,6 +19,12 @@ import { formatAge, formatDate, formatMoney } from "@/lib/format";
 import type { FormSubmission, Payment, Pet, Profile, SubmissionStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+const INTAKE_LABELS: Record<SubmissionStatus, string> = {
+  submitted: "New",
+  reviewed: "Reviewed",
+  approved: "Approved · can book",
+};
+
 export default async function ClientDetailPage({ params }: PageProps<"/admin/clients/[id]">) {
   const [{ id }, { supabase, admin }] = await Promise.all([params, adminData()]);
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle<Profile>();
@@ -50,7 +56,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
         description={`Joined ${formatDate(profile.created_at)}`}
         actions={
           <>
-            <ButtonLink href={`/admin/calendar/new?client=${profile.id}`}>Book a visit</ButtonLink>
+            <ButtonLink href={`/admin/calendar/new?client=${profile.id}`}>New booking</ButtonLink>
             {profile.id !== admin.id ? <RoleToggle userId={profile.id} role={profile.role} /> : null}
           </>
         }
@@ -100,13 +106,13 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
           </Card>
 
           <Card>
-            <h2 className="mb-3 text-xl font-semibold">Visits</h2>
+            <h2 className="mb-3 text-xl font-semibold">Bookings</h2>
             <BookingList
               bookings={normalizeBookings(bookingsRes.data)}
               windows={config.windows}
               walkers={config.walkers}
               timeZone={config.settings.timezone}
-              empty="No visits yet."
+              empty="No bookings yet."
               hrefFor={(b) => `/admin/calendar?view=week&date=${b.service_date}&b=${b.id}`}
             />
           </Card>
@@ -180,12 +186,14 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                     <form key={status} action={setSubmissionStatus.bind(null, submission.id, status)}>
                       <button
                         type="submit"
+                        aria-pressed={submission.status === status}
+                        title={status === "approved" ? "Also approves them to book every service, and emails them." : undefined}
                         className={cn(
-                          "rounded-full px-3 py-1.5 text-xs font-bold capitalize transition",
+                          "rounded-full px-3 py-1.5 text-xs font-bold transition",
                           submission.status === status ? "bg-ink text-white" : "bg-sea-50 text-ink-600 hover:bg-sea-100",
                         )}
                       >
-                        {status}
+                        {INTAKE_LABELS[status]}
                       </button>
                     </form>
                   ))}
@@ -197,7 +205,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                 <p className="mb-4 text-sm text-ink-600">
                   Last updated {formatDate(submission.updated_at)} ·{" "}
                   <Badge tone={submission.status === "approved" ? "green" : submission.status === "reviewed" ? "sea" : "sun"}>
-                    {submission.status}
+                    {submission.status === "approved" ? "Approved" : INTAKE_LABELS[submission.status]}
                   </Badge>
                 </p>
                 {submission.service_ids?.length ? (

@@ -1,4 +1,4 @@
-import { ArrowRight, CircleCheck, Circle, ClipboardList, PawPrint, Plus } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, ClipboardList, Hourglass, PawPrint, Plus } from "lucide-react";
 import Link from "next/link";
 import { BookingList } from "@/components/portal/booking-list";
 import { PageTitle } from "@/components/dashboard/shell";
@@ -32,7 +32,7 @@ export default async function PortalHome() {
       .in("status", ["scheduled", "requested"])
       .order("start_time")
       .limit(4),
-    supabase.from("bookings").select("service_id").eq("user_id", user.id).neq("status", "canceled").limit(200),
+    supabase.from("bookings").select("service_id, status").eq("user_id", user.id).not("status", "in", "(canceled,declined)").limit(200),
     supabase.from("services").select("*").eq("active", true).order("position"),
     getForm("intake"),
   ]);
@@ -50,6 +50,9 @@ export default async function PortalHome() {
   const fields = form?.fields ?? [];
   const approved = user.isAdmin || user.profile.booking_approved;
   const meetGreet = services.find((s) => s.audience === "everyone" && s.bookable);
+  // Booked their meet & greet but not approved yet: the next step is ours, so say so.
+  const everyoneIds = new Set(services.filter((s) => s.audience === "everyone").map((s) => s.id));
+  const waitingOnUs = !approved && (anyBookingRes.data ?? []).some((b) => everyoneIds.has(b.service_id as string));
   const firstName = (user.profile.full_name ?? "").split(" ")[0] || "friend";
 
   const steps = [
@@ -72,7 +75,7 @@ export default async function PortalHome() {
       : {
           done: (anyBookingRes.data ?? []).length > 0,
           title: "Book a meet & greet",
-          body: "We’ll meet your pup — walks unlock right after.",
+          body: "We’ll meet your pup, then approve you for walks.",
           href: meetGreet ? `/portal/book?service=${meetGreet.id}` : "/portal/book",
         },
   ];
@@ -83,8 +86,20 @@ export default async function PortalHome() {
       <PageTitle
         title={`Hi, ${firstName}! 👋`}
         description="Everything for your pup, all in one place."
-        actions={<ButtonLink href="/portal/book">Book a visit</ButtonLink>}
+        actions={<ButtonLink href="/portal/book">Make a booking</ButtonLink>}
       />
+
+      {waitingOnUs ? (
+        <Card className="mb-6 flex items-start gap-4 border-sea-200 bg-sea-50">
+          <Hourglass className="mt-1 size-6 shrink-0 text-ocean" aria-hidden />
+          <div>
+            <h2 className="text-xl font-semibold">Thanks — we can’t wait to meet {pets.length === 1 ? pets[0].name : "your pup"}!</h2>
+            <p className="mt-1 text-ink-600">
+              After the meet &amp; greet we’ll approve your account and email you. Then walks and everything else unlock.
+            </p>
+          </div>
+        </Card>
+      ) : null}
 
       {doneCount < steps.length ? (
         <Card className="mb-6">

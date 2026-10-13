@@ -66,7 +66,9 @@ export function BookingList({
                 {walker.display_name}
               </span>
             ) : null}
-            {b.status !== "scheduled" ? <Badge tone={meta.tone}>{meta.label}</Badge> : null}
+            {b.status !== "scheduled" ? (
+              <Badge tone={meta.tone}>{b.status === "requested" && !showClient ? "Waiting for confirmation" : meta.label}</Badge>
+            ) : null}
           </>
         );
         return (

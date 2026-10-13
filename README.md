@@ -105,7 +105,8 @@ Booking is built in — no third-party scheduler.
   Realtime. Each admin can subscribe to a private iCal feed (`/api/calendar/<token>`) from
   Google or Apple Calendar.
 - **Emails** (confirmations, requests, changes, cancellations, evening-before reminders, each
-  walker’s next-day schedule) are sent from the database with Resend through `pg_net`, so they go
+  walker’s next-day schedule, “you’re approved” for new clients, and a heads-up when a request
+  expires unconfirmed) are sent from the database with Resend through `pg_net`, so they go
   out no matter where a change comes from. Store a sending-only Resend key in Supabase Vault:
 
   ```sql

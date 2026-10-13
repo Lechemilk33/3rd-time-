@@ -4,6 +4,7 @@ import { adminData } from "@/app/admin/_lib";
 import { EmptyState, PageTitle } from "@/components/dashboard/shell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { formatDateTime } from "@/lib/format";
 import type { ContactMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -48,9 +49,13 @@ export default async function MessagesPage() {
                       </button>
                     </form>
                     <form action={deleteMessage.bind(null, m.id)}>
-                      <button type="submit" aria-label="Delete message" className="grid size-8 place-items-center rounded-full text-red-700 hover:bg-red-50">
+                      <ConfirmSubmit
+                        message={`Delete this message from ${m.name}? This can’t be undone.`}
+                        aria-label="Delete message"
+                        className="grid size-9 place-items-center rounded-full text-red-700 hover:bg-red-50"
+                      >
                         <Trash2 className="size-4" />
-                      </button>
+                      </ConfirmSubmit>
                     </form>
                   </div>
                 </div>

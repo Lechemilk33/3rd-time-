@@ -28,9 +28,9 @@ const INTAKE: Record<NonNullable<ClientRow["intake"]>, { tone: "sun" | "sea" | "
 
 type Filter = "all" | "review" | "new" | "approved";
 
-export function ClientsTable({ rows }: { rows: ClientRow[] }) {
+export function ClientsTable({ rows, initialFilter = "all" }: { rows: ClientRow[]; initialFilter?: Filter }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(initialFilter);
 
   const filtered = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);

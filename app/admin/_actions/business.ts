@@ -13,7 +13,7 @@ export async function setSubmissionStatus(submissionId: string, status: Submissi
   if (!["submitted", "reviewed", "approved"].includes(status)) return;
   const supabase = await adminClient();
   const { data } = await supabase.from("form_submissions").update({ status }).eq("id", submissionId).select("user_id").maybeSingle();
-  // Approving someone's intake also lets them book regular visits.
+  // Approving someone's intake also lets them book regular visits (and emails them, via a trigger).
   if (status === "approved" && data?.user_id) {
     await supabase.from("profiles").update({ booking_approved: true }).eq("id", data.user_id);
   }
@@ -26,7 +26,7 @@ export async function setBookingApproval(userId: string, approved: boolean): Pro
   const { error } = await supabase.from("profiles").update({ booking_approved: approved }).eq("id", userId);
   if (error) return { ok: false, error: error.message };
   refresh();
-  return { ok: true, message: approved ? "Approved — they can book walks now." : "Approval removed." };
+  return { ok: true, message: approved ? "Approved — they can book everything now. We emailed them." : "Approval removed." };
 }
 
 export async function saveClientNotes(userId: string, _prev: ActionResult | null, formData: FormData): Promise<ActionResult> {

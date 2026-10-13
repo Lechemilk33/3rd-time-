@@ -1,7 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useActionState, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { submitIntake } from "@/app/portal/actions";
 import { DynamicFormFields } from "@/components/forms/dynamic-form-fields";
 import { Card } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { servicePrice, serviceTiming } from "@/lib/booking";
 import { visibleFields } from "@/lib/intake";
 import type { FormAnswers, FormField, Service } from "@/lib/types";
+import { useFormAction } from "@/lib/use-form-action";
 import { cn } from "@/lib/utils";
 
 export function IntakeForm({
@@ -28,14 +29,14 @@ export function IntakeForm({
   selectedServiceIds: string[];
   submitted: boolean;
 }) {
-  const [state, action] = useActionState(submitIntake, null);
+  const [state, onSubmit, pending] = useFormAction(submitIntake);
   const [selected, setSelected] = useState<string[]>(selectedServiceIds);
   const visible = useMemo(() => new Set(visibleFields(fields, selected).map((f) => f.id)), [fields, selected]);
   const serviceNames = useMemo(() => new Map(services.map((s) => [s.id, s.name])), [services]);
   const extra = fields.filter((f) => f.services?.length && f.type !== "heading" && visible.has(f.id)).length;
 
   return (
-    <form action={action} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6">
       {services.length ? (
         <Card>
           <h2 className="text-xl font-semibold">What can we help with?</h2>
@@ -49,7 +50,7 @@ export function IntakeForm({
                 <label
                   key={s.id}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-3 transition",
+                    "flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-3 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sea-200",
                     on ? "border-ocean bg-sea-50" : "border-ink-100 hover:border-ink-200",
                   )}
                 >
@@ -92,7 +93,7 @@ export function IntakeForm({
       </Card>
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       {state?.ok ? <Notice tone="success">{state.message}</Notice> : null}
-      <SubmitButton size="lg" pendingText="Sending…">
+      <SubmitButton size="lg" pendingText="Sending…" pending={pending}>
         {submitted ? "Update my answers" : "Submit intake form"}
       </SubmitButton>
     </form>

@@ -13,6 +13,8 @@ import { safeHref } from "@/lib/utils";
 export async function ServicesSection({ data }: { data: SectionData }) {
   const [services, settings] = await Promise.all([getServices(), getSiteSettings()]);
   const showBook = bool(data, "showBookButton", true);
+  // Placeholder art only keeps a row aligned when some cards have photos; with none it's just empty space.
+  const anyPhotos = services.some((s) => s.image_url);
 
   return (
     <SectionShell background={str(data, "background")}>
@@ -32,12 +34,17 @@ export async function ServicesSection({ data }: { data: SectionData }) {
               >
                 {service.image_url ? (
                   <Photo src={service.image_url} alt="" className="aspect-[16/10] w-full" />
-                ) : (
+                ) : anyPhotos ? (
                   <div className="relative grid aspect-[16/10] place-items-center overflow-hidden bg-sea-100">
                     <PawMark className="size-16 text-sea-300" />
                   </div>
-                )}
+                ) : null}
                 <div className="flex flex-1 flex-col p-5">
+                  {anyPhotos ? null : (
+                    <span className="mb-4 grid size-11 place-items-center rounded-2xl bg-sea-100 text-ocean" aria-hidden>
+                      {service.kind === "stay" ? <Moon className="size-5" /> : <PawMark className="size-6" />}
+                    </span>
+                  )}
                   <h3 className="text-xl font-semibold text-ink">{service.name}</h3>
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
                     <span className="font-display text-2xl font-semibold text-ocean">

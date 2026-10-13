@@ -1,17 +1,18 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useActionState, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { saveClientNotes, setBookingApproval, setClientRole } from "@/app/admin/_actions/business";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useFormAction } from "@/lib/use-form-action";
 
 export function ClientNotesForm({ userId, notes }: { userId: string; notes: string }) {
-  const [state, action] = useActionState(saveClientNotes.bind(null, userId), null);
+  const [state, onSubmit, pending] = useFormAction(saveClientNotes.bind(null, userId));
   return (
-    <form action={action} className="space-y-3">
+    <form onSubmit={onSubmit} className="space-y-3">
       <Textarea
         name="notes"
         rows={6}
@@ -21,7 +22,7 @@ export function ClientNotesForm({ userId, notes }: { userId: string; notes: stri
       />
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       {state?.ok ? <Notice tone="success">{state.message}</Notice> : null}
-      <SubmitButton size="sm" variant="secondary" pendingText="Saving…">
+      <SubmitButton size="sm" variant="secondary" pendingText="Saving…" pending={pending}>
         Save notes
       </SubmitButton>
     </form>

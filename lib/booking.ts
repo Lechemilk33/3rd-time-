@@ -76,7 +76,7 @@ export type BookingDetail = Booking & {
   client: BookingClient | null;
   pets: BookingPet[];
   service: (Pick<Service, "id" | "name" | "price_cents" | "price_label" | "price_unit" | "kind" | "duration_minutes"> &
-    Pick<Service, "start_minute" | "end_minute" | "min_nights" | "max_nights">) | null;
+    Pick<Service, "start_minute" | "end_minute" | "min_nights" | "max_nights" | "confirmation">) | null;
 };
 
 export type Availability = { service_date: Ymd; window_id: string; capacity: number; remaining: number };
@@ -287,7 +287,7 @@ export const BOOKING_DETAIL_SELECT = `
   pets:booking_pets (pet:pets (id, name, breed, photo_url, temperament, walking_notes, medical_notes,
     medications, feeding_notes)),
   service:services (id, name, price_cents, price_label, price_unit, kind, duration_minutes, start_minute, end_minute,
-    min_nights, max_nights)
+    min_nights, max_nights, confirmation)
 `;
 
 type RawBooking = Omit<BookingDetail, "pets" | "client" | "service"> & {

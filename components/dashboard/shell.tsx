@@ -1,8 +1,29 @@
-import { Suspense, type ReactNode } from "react";
+import { cache, Suspense, type ReactNode } from "react";
 import { Logo } from "@/components/site/logo";
 import { MobileTabs, SidebarNav } from "@/components/dashboard/nav";
 import { MobileUserMenu, UserMenu } from "@/components/dashboard/user-menu";
 import { getSiteSettings } from "@/lib/content";
+import { isSupabaseConfigured } from "@/lib/env";
+import { createClient } from "@/lib/supabase/server";
+
+/** Things waiting on the team, shown as badges in the admin nav. RLS limits these to admins. */
+const adminCounts = cache(async (): Promise<Record<string, number>> => {
+  if (!isSupabaseConfigured()) return {};
+  const supabase = await createClient();
+  const [requests, messages] = await Promise.all([
+    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "requested"),
+    supabase.from("contact_messages").select("id", { count: "exact", head: true }).eq("handled", false),
+  ]);
+  return { "/admin/calendar": requests.count ?? 0, "/admin/messages": messages.count ?? 0 };
+});
+
+async function Sidebar({ area }: { area: "portal" | "admin" }) {
+  return <SidebarNav area={area} counts={area === "admin" ? await adminCounts() : undefined} />;
+}
+
+async function Tabs({ area }: { area: "portal" | "admin" }) {
+  return <MobileTabs area={area} counts={area === "admin" ? await adminCounts() : undefined} />;
+}
 
 export async function DashboardShell({ area, children }: { area: "portal" | "admin"; children: ReactNode }) {
   const settings = await getSiteSettings();
@@ -17,7 +38,7 @@ export async function DashboardShell({ area, children }: { area: "portal" | "adm
           {label}
         </p>
         <Suspense fallback={null}>
-          <SidebarNav area={area} />
+          <Sidebar area={area} />
         </Suspense>
         <div className="mt-auto pt-6">
           <Suspense fallback={null}>
@@ -35,7 +56,7 @@ export async function DashboardShell({ area, children }: { area: "portal" | "adm
             </Suspense>
           </div>
           <Suspense fallback={<div className="h-12" />}>
-            <MobileTabs area={area} />
+            <Tabs area={area} />
           </Suspense>
         </header>
         <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-10">{children}</main>

@@ -8,9 +8,11 @@ import type { ComponentProps } from "react";
 export function SubmitButton({
   children,
   pendingText,
+  pending: pendingProp,
   ...props
-}: ComponentProps<typeof Button> & { pendingText?: string }) {
-  const { pending } = useFormStatus();
+}: ComponentProps<typeof Button> & { pendingText?: string; pending?: boolean }) {
+  const status = useFormStatus();
+  const pending = pendingProp || status.pending;
   return (
     <Button type="submit" disabled={pending || props.disabled} {...props}>
       {pending ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}

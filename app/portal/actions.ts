@@ -74,7 +74,9 @@ export async function savePet(_prev: ActionResult | null, formData: FormData): P
     : await supabase.from("pets").insert({ ...pet, owner_id: user.id });
 
   if (error) return { ok: false, error: error.message };
-  redirect("/portal/pets");
+  // Added from the booking wizard: go straight back to it.
+  const next = formString(formData, "next");
+  redirect(next?.startsWith("/portal/book") ? next : "/portal/pets");
 }
 
 export async function deletePet(petId: string): Promise<ActionResult> {

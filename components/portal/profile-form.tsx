@@ -1,17 +1,17 @@
 "use client";
 
-import { useActionState } from "react";
 import { updateProfile } from "@/app/portal/actions";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { Profile } from "@/lib/types";
+import { useFormAction } from "@/lib/use-form-action";
 
 export function ProfileForm({ profile, email }: { profile: Profile; email: string }) {
-  const [state, action] = useActionState(updateProfile, null);
+  const [state, onSubmit, pending] = useFormAction(updateProfile);
   return (
-    <form action={action} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6">
       <Card className="space-y-4">
         <h2 className="text-xl font-semibold">About you</h2>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -57,7 +57,7 @@ export function ProfileForm({ profile, email }: { profile: Profile; email: strin
       </Card>
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       {state?.ok ? <Notice tone="success">{state.message}</Notice> : null}
-      <SubmitButton size="lg" pendingText="Saving…">
+      <SubmitButton size="lg" pendingText="Saving…" pending={pending}>
         Save profile
       </SubmitButton>
     </form>

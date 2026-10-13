@@ -82,7 +82,22 @@ function useIsActive() {
     href === "/portal" || href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SidebarNav({ area }: { area: "portal" | "admin" }) {
+/** Small count pill next to a nav link (requests waiting, new messages). */
+function CountBadge({ n, active }: { n?: number; active?: boolean }) {
+  if (!n) return null;
+  return (
+    <span
+      className={cn(
+        "ml-auto min-w-5 rounded-full px-1.5 text-center text-xs leading-5 font-extrabold",
+        active ? "bg-white text-ink" : "bg-amber-500 text-white",
+      )}
+    >
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
+export function SidebarNav({ area, counts }: { area: "portal" | "admin"; counts?: Record<string, number> }) {
   const isActive = useIsActive();
   return (
     <nav className="space-y-6" aria-label={area === "admin" ? "Admin" : "Portal"}>
@@ -104,6 +119,7 @@ export function SidebarNav({ area }: { area: "portal" | "admin" }) {
                 >
                   <Icon className={cn("size-[1.15rem]", isActive(href) ? "text-ocean" : "")} aria-hidden />
                   {label}
+                  <CountBadge n={counts?.[href]} />
                 </Link>
               </li>
             ))}
@@ -114,7 +130,7 @@ export function SidebarNav({ area }: { area: "portal" | "admin" }) {
   );
 }
 
-export function MobileTabs({ area }: { area: "portal" | "admin" }) {
+export function MobileTabs({ area, counts }: { area: "portal" | "admin"; counts?: Record<string, number> }) {
   const isActive = useIsActive();
   const items = NAV[area].flatMap((g) => g.items);
   return (
@@ -132,6 +148,7 @@ export function MobileTabs({ area }: { area: "portal" | "admin" }) {
             >
               <Icon className="size-4" aria-hidden />
               {label}
+              <CountBadge n={counts?.[href]} active={isActive(href)} />
             </Link>
           </li>
         ))}

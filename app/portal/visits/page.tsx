@@ -51,19 +51,21 @@ export default async function VisitsPage() {
     <>
       <PageTitle
         title="My visits"
-        description={`Reschedule or cancel up to ${config.settings.cancel_cutoff_hours} hours before a visit.`}
-        actions={<ButtonLink href="/portal/book">Book a visit</ButtonLink>}
+        description={`Reschedule or cancel up to ${config.settings.cancel_cutoff_hours} hours before it starts.`}
+        actions={<ButtonLink href="/portal/book">Make a booking</ButtonLink>}
       />
-      {active.length ? (
-        <VisitList visits={active} {...common} />
-      ) : (
-        <EmptyState icon={<CalendarDays className="size-7" />} title="Nothing booked yet">
-          <p>Your upcoming walks, visits and stays will show up here.</p>
-          <ButtonLink href="/portal/book" className="mt-4">
-            Book a visit
-          </ButtonLink>
-        </EmptyState>
-      )}
+      <VisitList
+        visits={active}
+        {...common}
+        empty={
+          <EmptyState icon={<CalendarDays className="size-7" />} title="Nothing booked yet">
+            <p>Your upcoming walks, visits and stays will show up here.</p>
+            <ButtonLink href="/portal/book" className="mt-4">
+              Make a booking
+            </ButtonLink>
+          </EmptyState>
+        }
+      />
       {inactive.length ? (
         <section className="mt-10">
           <h2 className="mb-3 text-xl font-semibold">Canceled or declined</h2>

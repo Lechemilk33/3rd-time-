@@ -1,23 +1,23 @@
 "use client";
 
-import { useActionState } from "react";
 import { createPage, updatePage } from "@/app/admin/_actions/content";
 import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { Page } from "@/lib/types";
+import { useFormAction } from "@/lib/use-form-action";
 
 export function NewPageForm() {
-  const [state, action] = useActionState(createPage, null);
+  const [state, onSubmit, pending] = useFormAction(createPage);
   return (
-    <form action={action} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
       <Field label="Page title" htmlFor="new-title">
         <Input id="new-title" name="title" placeholder="e.g. Pricing" required />
       </Field>
       <Field label="Web address (optional)" htmlFor="new-slug" help="Letters, numbers and dashes.">
         <Input id="new-slug" name="slug" placeholder="pricing" />
       </Field>
-      <SubmitButton pendingText="Creating…" className="sm:mb-7">
+      <SubmitButton pendingText="Creating…" pending={pending} className="sm:mb-7">
         Create page
       </SubmitButton>
       {state?.error ? <Notice tone="error" className="sm:col-span-3">{state.error}</Notice> : null}
@@ -26,10 +26,10 @@ export function NewPageForm() {
 }
 
 export function PageSettingsForm({ page }: { page: Page }) {
-  const [state, action] = useActionState(updatePage.bind(null, page.id), null);
+  const [state, onSubmit, pending] = useFormAction(updatePage.bind(null, page.id));
   const isHome = page.slug === "home";
   return (
-    <form action={action} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Title" htmlFor="title" help="Shown in the browser tab.">
           <Input id="title" name="title" defaultValue={page.title} required />
@@ -65,7 +65,7 @@ export function PageSettingsForm({ page }: { page: Page }) {
       </div>
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
       {state?.ok ? <Notice tone="success">{state.message}</Notice> : null}
-      <SubmitButton variant="secondary" pendingText="Saving…">
+      <SubmitButton variant="secondary" pendingText="Saving…" pending={pending}>
         Save page settings
       </SubmitButton>
     </form>

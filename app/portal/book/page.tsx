@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import type { BookingPet } from "@/lib/booking";
 import { getBookingConfig } from "@/lib/booking-server";
 import { getForm } from "@/lib/content";
-import { todayIn } from "@/lib/dates";
+import { longDate, todayIn, type Ymd } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import type { FormAnswers, Service } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
     supabase.from("form_submissions").select("answers, service_ids").eq("form_slug", "intake").eq("user_id", user.id).maybeSingle(),
     supabase
       .from("bookings")
-      .select("service_date, window_id, pets:booking_pets(pet_id)")
+      .select("service_id, service_date, window_id, pets:booking_pets(pet_id)")
       .eq("user_id", user.id)
       .in("status", ["requested", "scheduled"])
       .gte("service_date", todayIn("America/Los_Angeles")),
@@ -36,10 +36,20 @@ export default async function BookPage({ searchParams }: PageProps<"/portal/book
 
   const services = (servicesRes.data ?? []) as Service[];
   const approved = user.isAdmin || user.profile.booking_approved;
+  // A new client who already has their meet & greet booked is waiting on us, not on the wizard.
+  const meetGreetIds = new Set(services.filter((s) => s.audience === "everyone").map((s) => s.id));
+  const meetGreet = approved
+    ? null
+    : (upcomingRes.data ?? []).filter((b) => meetGreetIds.has(b.service_id as string)).sort((a, b) => (a.service_date < b.service_date ? -1 : 1))[0];
 
   return (
     <>
-      <PageTitle title="Book a visit" description="Pick a service, your pup and a time that works. It only takes a minute." />
+      <PageTitle title="Make a booking" description="Pick a service, your pup and a time that works. It only takes a minute." />
+      {meetGreet && config.settings.booking_enabled ? (
+        <Notice tone="success" title={`Your meet & greet is set for ${longDate(meetGreet.service_date as Ymd)} 🎉`} className="mb-6">
+          Once we’ve met your pup, we’ll approve your account and email you — then everything else unlocks.
+        </Notice>
+      ) : null}
       {!config.settings.booking_enabled && !user.isAdmin ? (
         <Notice tone="warning" title="Online booking is paused right now">
           Send us a message and we’ll get you on the schedule.

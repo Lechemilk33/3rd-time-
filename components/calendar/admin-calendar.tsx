@@ -72,6 +72,7 @@ export function AdminCalendar({
   walkers,
   timeZone,
   initialOpenId,
+  showRequests,
   fields,
 }: {
   view: CalendarView;
@@ -88,6 +89,8 @@ export function AdminCalendar({
   walkers: Walker[];
   timeZone: string;
   initialOpenId: string | null;
+  /** Open the Requests list on load (from "Review" links on the overview). */
+  showRequests?: boolean;
   /** Intake questions, to label the answers saved on bookings. */
   fields: FormField[];
 }) {
@@ -151,6 +154,15 @@ export function AdminCalendar({
   // ----- hover card -------------------------------------------------------------------------
   const [hover, setHover] = useState<{ b: BookingDetail; rect: DOMRect } | null>(null);
   const showTimer = useRef<number | undefined>(undefined);
+  // Fields in the open drawer with unsaved typing (notes, a cancel reason).
+  const drawerUnsaved = useRef(new Set<string>());
+  // "Decline" on a hover card opens the drawer straight to the decline panel.
+  const [drawerPanel, setDrawerPanel] = useState<"decline" | null>(null);
+  const confirmDiscard = useCallback(() => {
+    if (drawerUnsaved.current.size && !window.confirm("Close without saving? What you typed will be lost.")) return false;
+    drawerUnsaved.current.clear();
+    return true;
+  }, []);
   const hideTimer = useRef<number | undefined>(undefined);
   const dragging = useRef(false);
   const hoverVisible = useRef(false);
@@ -301,11 +313,16 @@ export function AdminCalendar({
     [router],
   );
 
+  // Bookings with a quick confirm/decline in flight, so a double-click doesn't send two emails.
+  const inFlight = useRef(new Set<string>());
   const quickStatus = useCallback(
     (b: BookingDetail, status: "scheduled" | "declined") => {
       setHover(null);
+      if (inFlight.current.has(b.id)) return;
+      inFlight.current.add(b.id);
       startAction(async () => {
         const res = await setBookingStatus(b.id, status);
+        inFlight.current.delete(b.id);
         showToast(
           res.ok ? (status === "scheduled" ? `Confirmed ${petNames(b.pets) || clientName(b)} · client emailed` : "Request declined · client emailed") : (res.error ?? "Something went wrong."),
           res.ok ? "success" : "error",
@@ -326,6 +343,8 @@ export function AdminCalendar({
       open: (id) => {
         window.clearTimeout(showTimer.current);
         setHover(null);
+        if (!confirmDiscard()) return;
+        setDrawerPanel(null);
         setOpenId(id);
         setUrlParam("b", id);
       },
@@ -359,13 +378,14 @@ export function AdminCalendar({
         }
       },
     }),
-    [timeZone, today, windowMap, walkerMap, fields, isDimmed, move, create],
+    [timeZone, today, windowMap, walkerMap, fields, isDimmed, move, create, confirmDiscard],
   );
 
   const closeDrawer = useCallback(() => {
+    if (!confirmDiscard()) return;
     setOpenId(null);
     setUrlParam("b", null);
-  }, []);
+  }, [confirmDiscard]);
 
   // ----- keyboard shortcuts ------------------------------------------------------------------
   useEffect(() => {
@@ -373,12 +393,14 @@ export function AdminCalendar({
       const el = e.target as HTMLElement | null;
       const typing = el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
       if (e.key === "Escape") {
-        if (openId) closeDrawer();
         setHover(null);
         if (typing && el === searchRef.current) {
           setQuery("");
           el.blur();
-        }
+        } else if (typing) {
+          // First Escape just leaves the field, so a reflex key press doesn't throw away typing.
+          el.blur();
+        } else if (openId) closeDrawer();
         return;
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey || openId) return;
@@ -599,7 +621,14 @@ export function AdminCalendar({
                 </button>
               ))}
             </div>
-            <RequestsButton requests={requests} onOpen={(id) => ctx.open(id)} onStatus={quickStatus} windows={windowMap} timeZone={timeZone} />
+            <RequestsButton
+              requests={requests}
+              defaultOpen={showRequests}
+              onOpen={(id) => ctx.open(id)}
+              onStatus={quickStatus}
+              windows={windowMap}
+              timeZone={timeZone}
+            />
             <Link href={`/admin/calendar/new?date=${date}`} className={buttonClass("primary", "sm")}>
               <Plus className="size-4" aria-hidden /> New booking
             </Link>
@@ -652,7 +681,7 @@ export function AdminCalendar({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Find a pup, client or address"
-              aria-label="Search visits"
+              aria-label="Search bookings"
               className="h-10 w-full rounded-full border-2 border-ink-100 bg-white pr-9 pl-9 text-sm font-semibold placeholder:text-ink-400 focus:border-ocean focus:ring-4 focus:ring-sea-100 focus:outline-none"
             />
             <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border border-ink-100 px-1.5 text-[10px] font-bold text-ink-400 sm:block">/</kbd>
@@ -699,11 +728,19 @@ export function AdminCalendar({
           onDecline={(b) => {
             setHover(null);
             ctx.open(b.id);
+            setDrawerPanel("decline");
           }}
         />
       ) : null}
 
-      {openBooking ? <BookingDrawer booking={openBooking} onClose={closeDrawer} onToast={showToast} /> : null}
+      {openBooking ? <BookingDrawer
+          key={openBooking.id}
+          booking={openBooking}
+          initialPanel={drawerPanel}
+          onClose={closeDrawer}
+          onToast={showToast}
+          unsaved={drawerUnsaved}
+        /> : null}
 
       {toast ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[80] flex justify-center px-4">
@@ -742,12 +779,14 @@ export function AdminCalendar({
 
 function RequestsButton({
   requests,
+  defaultOpen,
   onOpen,
   onStatus,
   windows,
   timeZone,
 }: {
   requests: BookingDetail[];
+  defaultOpen?: boolean;
   onOpen: (id: string) => void;
   onStatus: (b: BookingDetail, status: "scheduled" | "declined") => void;
   windows: Map<string, BookingWindow>;
@@ -756,6 +795,8 @@ function RequestsButton({
   return (
     <Popover
       align="end"
+      sheetOnMobile
+      defaultOpen={defaultOpen}
       className="w-[22rem] max-w-[calc(100vw-2rem)] p-2"
       trigger={({ toggle, open }) => (
         <button
@@ -798,13 +839,22 @@ function RequestsButton({
                     </span>
                   </span>
                 </button>
-                <div className="mt-2 flex gap-2 pl-1">
+                <div className="mt-2 flex flex-wrap gap-2 pl-1">
                   <button
                     type="button"
                     onClick={() => onStatus(b, "scheduled")}
-                    className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700"
+                    className="inline-flex h-9 items-center gap-1 rounded-full bg-emerald-600 px-3.5 text-sm font-bold text-white hover:bg-emerald-700"
                   >
-                    <Check className="size-3.5" aria-hidden /> Confirm
+                    <Check className="size-4" aria-hidden /> Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Decline ${petNames(b.pets) || clientName(b)}’s request? We’ll email ${clientName(b)}.`)) onStatus(b, "declined");
+                    }}
+                    className="inline-flex h-9 items-center rounded-full border border-red-200 px-3.5 text-sm font-bold text-red-700 hover:bg-red-50"
+                  >
+                    Decline
                   </button>
                   <button
                     type="button"
@@ -812,7 +862,7 @@ function RequestsButton({
                       close();
                       onOpen(b.id);
                     }}
-                    className="rounded-full border border-ink-100 px-3 py-1 text-xs font-bold text-ink-600 hover:border-ocean hover:text-ocean"
+                    className="inline-flex h-9 items-center rounded-full border border-ink-100 px-3.5 text-sm font-bold text-ink-600 hover:border-ocean hover:text-ocean"
                   >
                     Details
                   </button>

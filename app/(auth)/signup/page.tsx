@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { SignupForm } from "@/components/auth/forms";
+import { Suspense } from "react";
+import { AuthFormSkeleton, AuthSwitchLink, SignupForm } from "@/components/auth/forms";
 import { SetupNotice } from "@/components/auth/setup-notice";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -15,12 +15,14 @@ export default function SignupPage() {
         Create a free account to add your pup, fill out the intake form, and book walks.
       </p>
       {configured ? null : <SetupNotice />}
-      <SignupForm disabled={!configured} />
+      <Suspense fallback={<AuthFormSkeleton />}>
+        <SignupForm disabled={!configured} />
+      </Suspense>
       <p className="mt-8 text-ink-600">
         Already have an account?{" "}
-        <Link href="/login" className="font-bold text-ocean hover:underline">
-          Log in
-        </Link>
+        <Suspense fallback={<span className="font-bold text-ocean">Log in</span>}>
+          <AuthSwitchLink href="/login">Log in</AuthSwitchLink>
+        </Suspense>
       </p>
     </>
   );

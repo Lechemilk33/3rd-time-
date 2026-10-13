@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import {
   cancelBooking,
   deleteBooking,
@@ -50,20 +50,58 @@ import type { ActionResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Panel = null | "cancel" | "decline" | "move";
+type Run = (action: () => Promise<ActionResult>, after?: () => void, message?: string) => void;
+
+/** Tells the calendar something typed here isn't saved yet, so closing asks first. */
+function useUnsaved(ref: RefObject<Set<string>> | undefined, key: string, dirty: boolean) {
+  useEffect(() => {
+    const set = ref?.current;
+    if (!set) return;
+    if (dirty) set.add(key);
+    else set.delete(key);
+    return () => {
+      set.delete(key);
+    };
+  }, [ref, key, dirty]);
+}
+
+/** Keeps Tab inside the drawer while it's open (it's a modal dialog). */
+function trapTab(e: KeyboardEvent<HTMLElement>) {
+  if (e.key !== "Tab") return;
+  const items = [
+    ...e.currentTarget.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ].filter((el) => el.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 export function BookingDrawer({
   booking,
   onClose,
   onToast,
+  unsaved,
+  initialPanel = null,
 }: {
   booking: BookingDetail;
   onClose: () => void;
   onToast: (message: string, tone?: "success" | "error") => void;
+  unsaved?: RefObject<Set<string>>;
+  initialPanel?: Panel;
 }) {
   const cal = useCalendar();
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [panel, setPanel] = useState<Panel>(null);
+  const [panel, setPanel] = useState<Panel>(initialPanel);
   const [pending, start] = useTransition();
   const b = booking;
   const walker = b.walker_id ? cal.walkers.get(b.walker_id) : undefined;
@@ -74,19 +112,28 @@ export function BookingDrawer({
   const noun = b.kind === "stay" ? "stay" : b.kind === "day" ? "day" : "visit";
   const answers = answerRows(cal.fields, b.answers);
 
+  const who = clientName(b);
+  const Noun = noun[0].toUpperCase() + noun.slice(1);
+
+  // Hand focus back to whatever opened the drawer. (Declared first so it records the opener
+  // before the next effect moves focus to the close button.)
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    return () => opener?.focus?.();
+  }, []);
   useEffect(() => {
     closeRef.current?.focus();
   }, [b.id]);
 
-  function run(action: () => Promise<ActionResult>, after?: () => void) {
+  const run: Run = (action, after, message) => {
     start(async () => {
       const res = await action();
       if (res.ok) {
-        onToast(res.message ?? "Saved.");
+        onToast(message ?? res.message ?? "Saved.");
         after?.();
       } else onToast(res.error ?? "Something went wrong.", "error");
     });
-  }
+  };
 
   const mapsUrl = b.client?.address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.client.address)}`
@@ -105,6 +152,7 @@ export function BookingDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        onKeyDown={trapTab}
         className="relative flex h-full w-full max-w-[28rem] flex-col overflow-hidden bg-white shadow-2xl motion-safe:animate-[slide-in-right_180ms_ease-out] sm:rounded-l-3xl"
       >
         <div className="h-1.5 shrink-0" style={{ background: color }} />
@@ -147,7 +195,7 @@ export function BookingDrawer({
                   size="sm"
                   className="bg-emerald-600 text-white shadow-none hover:translate-y-0 hover:bg-emerald-700 hover:shadow-none"
                   disabled={pending}
-                  onClick={() => run(() => setBookingStatus(b.id, "scheduled"))}
+                  onClick={() => run(() => setBookingStatus(b.id, "scheduled"), undefined, `Confirmed · ${who} emailed`)}
                 >
                   <Check className="size-4" aria-hidden /> Confirm
                 </Button>
@@ -157,7 +205,7 @@ export function BookingDrawer({
               </>
             ) : null}
             {b.status === "scheduled" ? (
-              <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => setBookingStatus(b.id, "completed"))}>
+              <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => setBookingStatus(b.id, "completed"), undefined, "Marked done")}>
                 <Check className="size-4" aria-hidden /> Mark done
               </Button>
             ) : null}
@@ -172,14 +220,29 @@ export function BookingDrawer({
               </>
             ) : null}
             {b.status === "completed" ? (
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => setBookingStatus(b.id, "scheduled", { notify: false }))}>
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => setBookingStatus(b.id, "scheduled", { notify: false }), undefined, "Marked not done")}>
                 <RotateCcw className="size-4" aria-hidden /> Mark not done
               </Button>
             ) : null}
             {b.status === "canceled" || b.status === "declined" ? (
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => setBookingStatus(b.id, "scheduled"))}>
-                <RotateCcw className="size-4" aria-hidden /> Restore {noun}
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => run(() => setBookingStatus(b.id, "scheduled", { notify: false }), undefined, `${Noun} restored · ${who} wasn’t emailed`)}
+                >
+                  <RotateCcw className="size-4" aria-hidden /> Restore {noun}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => run(() => setBookingStatus(b.id, "scheduled"), undefined, `${Noun} restored · ${who} emailed`)}
+                >
+                  <Mail className="size-4" aria-hidden /> Restore &amp; email {who}
+                </Button>
+              </>
             ) : null}
           </div>
 
@@ -189,6 +252,7 @@ export function BookingDrawer({
               kind={panel}
               series={Boolean(b.series_id)}
               pending={pending}
+              unsaved={unsaved}
               onCancel={() => setPanel(null)}
               onSubmit={({ reason, notify, scope }) =>
                 run(
@@ -197,6 +261,9 @@ export function BookingDrawer({
                       ? cancelBooking(b.id, { reason, notify, scope })
                       : setBookingStatus(b.id, "declined", { reason, notify, scope }),
                   () => setPanel(null),
+                  scope === "following"
+                    ? undefined
+                    : `${panel === "cancel" ? `${Noun} canceled` : "Request declined"}${notify ? ` · ${who} emailed` : ""}`,
                 )
               }
             />
@@ -357,7 +424,7 @@ export function BookingDrawer({
                 <span className="font-bold">From the client:</span> “{b.client_note}”
               </p>
             ) : null}
-            <NotesEditor key={`${b.id}-${b.notes ?? ""}`} booking={b} pending={pending} run={run} />
+            <NotesEditor key={`${b.id}-${b.notes ?? ""}`} booking={b} pending={pending} run={run} unsaved={unsaved} noun={noun} />
           </Section>
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 pt-4 text-xs text-ink-400">
@@ -454,25 +521,30 @@ function NotesEditor({
   booking,
   pending,
   run,
+  unsaved,
+  noun,
 }: {
   booking: BookingDetail;
   pending: boolean;
-  run: (action: () => Promise<ActionResult>) => void;
+  run: Run;
+  unsaved?: RefObject<Set<string>>;
+  noun: string;
 }) {
   const [notes, setNotes] = useState(booking.notes ?? "");
   const dirty = notes !== (booking.notes ?? "");
+  useUnsaved(unsaved, "notes", dirty);
   return (
     <div className="space-y-2">
       <Textarea
-        aria-label="Visit notes"
+        aria-label={`${noun[0].toUpperCase()}${noun.slice(1)} notes`}
         rows={3}
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        placeholder="Visit notes — the client can see these (e.g. “Max did great, two potty breaks!”)"
+        placeholder={`${noun[0].toUpperCase()}${noun.slice(1)} notes — the client can see these (e.g. “Max did great, two potty breaks!”)`}
       />
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-ink-400">Private notes go on the client’s profile.</p>
-        <Button size="sm" variant="secondary" disabled={pending || !dirty} onClick={() => run(() => updateBooking(booking.id, { notes }))}>
+        <Button size="sm" variant="secondary" disabled={pending || !dirty} onClick={() => run(() => updateBooking(booking.id, { notes }), undefined, "Notes saved")}>
           Save notes
         </Button>
       </div>
@@ -485,6 +557,7 @@ function ReasonPanel({
   kind,
   series,
   pending,
+  unsaved,
   onCancel,
   onSubmit,
 }: {
@@ -492,10 +565,12 @@ function ReasonPanel({
   kind: "cancel" | "decline";
   series: boolean;
   pending: boolean;
+  unsaved?: RefObject<Set<string>>;
   onCancel: () => void;
   onSubmit: (v: { reason: string; notify: boolean; scope: "one" | "following" }) => void;
 }) {
   const [reason, setReason] = useState("");
+  useUnsaved(unsaved, "reason", reason.trim() !== "");
   const [notify, setNotify] = useState(true);
   const [scope, setScope] = useState<"one" | "following">("one");
   return (

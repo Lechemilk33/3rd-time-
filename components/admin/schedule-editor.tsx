@@ -147,6 +147,8 @@ export function RulesEditor({ settings }: { settings: BookingSettings }) {
 
 export function WindowsEditor({ windows }: { windows: BookingWindow[] }) {
   const [adding, setAdding] = useState(false);
+  // Rows remount after a change, so a removed window reports back up here.
+  const [removed, setRemoved] = useState<ActionResult | null>(null);
   return (
     <Card className="space-y-4">
       <div>
@@ -157,9 +159,10 @@ export function WindowsEditor({ windows }: { windows: BookingWindow[] }) {
       </div>
       <ul className="space-y-2">
         {windows.map((w) => (
-          <WindowRow key={`${w.id}-${w.start_minute}-${w.end_minute}-${w.label}-${w.active}`} window={w} />
+          <WindowRow key={`${w.id}-${w.start_minute}-${w.end_minute}-${w.label}-${w.active}`} window={w} onRemoved={setRemoved} />
         ))}
       </ul>
+      <Result result={removed} />
       {adding ? (
         <WindowRow window={null} onDone={() => setAdding(false)} />
       ) : (
@@ -171,7 +174,15 @@ export function WindowsEditor({ windows }: { windows: BookingWindow[] }) {
   );
 }
 
-function WindowRow({ window: w, onDone }: { window: BookingWindow | null; onDone?: () => void }) {
+function WindowRow({
+  window: w,
+  onDone,
+  onRemoved,
+}: {
+  window: BookingWindow | null;
+  onDone?: () => void;
+  onRemoved?: (r: ActionResult) => void;
+}) {
   const [label, setLabel] = useState(w?.label ?? "Evening");
   const [start, setStart] = useState(minutesToTimeInput(w?.start_minute ?? 17 * 60));
   const [end, setEnd] = useState(minutesToTimeInput(w?.end_minute ?? 19 * 60));
@@ -218,7 +229,8 @@ function WindowRow({ window: w, onDone }: { window: BookingWindow | null; onDone
               aria-label={`Delete ${w.label}`}
               disabled={pending}
               onClick={() => {
-                if (confirm(`Remove the ${w.label} window?`)) run(() => deleteWindow(w.id));
+                if (confirm(`Remove the ${w.label} window? If it already has visits, it’ll be hidden from clients instead so your records stay intact.`))
+                  run(() => deleteWindow(w.id), (r) => r.ok && onRemoved?.(r));
               }}
             >
               <Trash2 className="size-4 text-red-700" aria-hidden />
@@ -286,14 +298,16 @@ export function WalkersEditor({
           </button>
         ))}
       </div>
-      {walker ? (
-        <WalkerPanel
-          key={walker.profile_id}
-          walker={walker}
-          windows={windows.filter((w) => w.active)}
-          availability={availability.filter((a) => a.walker_id === walker.profile_id)}
-        />
-      ) : null}
+      {/* Every panel stays mounted (just hidden) so switching tabs doesn't throw away unsaved changes. */}
+      {walkers.map((w) => (
+        <div key={w.profile_id} hidden={w.profile_id !== walker?.profile_id}>
+          <WalkerPanel
+            walker={w}
+            windows={windows.filter((x) => x.active)}
+            availability={availability.filter((a) => a.walker_id === w.profile_id)}
+          />
+        </div>
+      ))}
     </Card>
   );
 }
@@ -324,8 +338,8 @@ function WalkerPanel({
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="Name clients see" htmlFor="wk-name" className="min-w-40 flex-1">
-            <Input id="wk-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Field label="Name clients see" htmlFor={`wk-name-${walker.profile_id}`} className="min-w-40 flex-1">
+            <Input id={`wk-name-${walker.profile_id}`} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <div>
             <p className="mb-1.5 text-sm font-bold">Calendar color</p>
@@ -539,7 +553,15 @@ export function TimeOffEditor({
                     {t.note ? ` · ${t.note}` : ""}
                   </span>
                 </span>
-                <Button size="sm" variant="ghost" disabled={remove.pending} onClick={() => remove.run(() => deleteTimeOff(t.id))} aria-label="Remove time off">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={remove.pending}
+                  onClick={() => {
+                    if (confirm("Remove this time off? Clients will be able to book these times again.")) remove.run(() => deleteTimeOff(t.id));
+                  }}
+                  aria-label="Remove time off"
+                >
                   <Trash2 className="size-4 text-red-700" aria-hidden />
                 </Button>
               </li>
@@ -549,6 +571,7 @@ export function TimeOffEditor({
       ) : (
         <p className="text-sm text-ink-400">No upcoming time off.</p>
       )}
+      <Result result={remove.result} />
     </Card>
   );
 }

@@ -14,6 +14,16 @@ const uuidOrNull = (v: unknown) => (typeof v === "string" && UUID.test(v) ? v : 
 const minuteOrNull = (v: unknown) =>
   typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 1440 ? v : null;
 
+/** The booking functions word errors for clients; say it the way an admin needs to hear it. */
+function adminError(error: { message?: string } | null, canOverbook = false) {
+  const message = rpcError(error);
+  if (/^Your pup already has a (booking|visit)/.test(message)) return "That pup already has a booking then.";
+  if (/^Sorry — that time (just filled up|is full)/.test(message)) {
+    return canOverbook ? "That time is full. Tick “Allow overbooking” to book it anyway." : "That time is full — every walker is booked then.";
+  }
+  return message;
+}
+
 export type CreateBookingsInput = {
   clientId: string | null;
   guestName?: string;
@@ -59,7 +69,7 @@ export async function createBookings(input: CreateBookingsInput, answers?: FormD
     p_end_date: input.endDate && isYmd(input.endDate) ? input.endDate : null,
     p_answers: saved,
   });
-  if (error) return { ok: false, error: rpcError(error) };
+  if (error) return { ok: false, error: adminError(error, true) };
   refresh();
   const result = data as Required<Pick<CreateBookingsResult, "created" | "skipped">>;
   return { ok: true, created: result.created, skipped: result.skipped };
@@ -91,7 +101,7 @@ export async function moveBooking(input: MoveInput): Promise<ActionResult & { no
     p_clear_arrival: Boolean(input.clearArrival),
     p_end_date: input.endDate && isYmd(input.endDate) ? input.endDate : null,
   });
-  if (error) return { ok: false, error: rpcError(error) };
+  if (error) return { ok: false, error: adminError(error) };
   refresh();
   return { ok: true, notified: Boolean((data as { notified?: boolean })?.notified) };
 }
@@ -115,7 +125,7 @@ export async function setBookingStatus(
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
   const n = Number(data ?? 0);
-  return { ok: true, message: n > 1 ? `Updated ${n} visits.` : "Updated." };
+  return { ok: true, message: n > 1 ? `Updated ${n} bookings.` : "Updated." };
 }
 
 export async function cancelBooking(
@@ -133,7 +143,7 @@ export async function cancelBooking(
   if (error) return { ok: false, error: rpcError(error) };
   refresh();
   const n = Number(data ?? 0);
-  return { ok: true, message: n > 1 ? `Canceled ${n} visits.` : "Visit canceled." };
+  return { ok: true, message: n > 1 ? `Canceled ${n} bookings.` : "Canceled." };
 }
 
 /** Walker and visit notes. Times go through moveBooking so emails and capacity stay right. */

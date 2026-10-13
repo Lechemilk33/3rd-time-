@@ -45,7 +45,7 @@ export async function ContactSection({ data }: { data: SectionData }) {
                   <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-sea-100 text-ocean">
                     <Icon className="size-5" aria-hidden />
                   </span>
-                  <span className="font-bold break-all text-ink">{d.label}</span>
+                  <span className="font-bold [overflow-wrap:anywhere] text-ink">{d.label}</span>
                 </>
               );
               return (

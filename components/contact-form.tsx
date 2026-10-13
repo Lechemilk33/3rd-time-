@@ -1,20 +1,20 @@
 "use client";
 
-import { useActionState } from "react";
 import { sendContactMessage } from "@/app/actions/contact";
 import { Field, Input, Textarea } from "@/components/ui/form";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useFormAction } from "@/lib/use-form-action";
 
 export function ContactForm() {
-  const [state, action] = useActionState(sendContactMessage, null);
+  const [state, onSubmit, pending] = useFormAction(sendContactMessage);
 
   if (state?.ok) {
     return <Notice tone="success" title="Message sent">{state.message}</Notice>;
   }
 
   return (
-    <form action={action} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Your name" htmlFor="contact-name" required>
           <Input id="contact-name" name="name" autoComplete="name" required maxLength={200} />
@@ -42,7 +42,7 @@ export function ContactForm() {
         </label>
       </div>
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
-      <SubmitButton size="lg" pendingText="Sending…">
+      <SubmitButton size="lg" pendingText="Sending…" pending={pending}>
         Send message
       </SubmitButton>
     </form>

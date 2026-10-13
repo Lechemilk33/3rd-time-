@@ -7,7 +7,7 @@ import { serviceEndMinute, serviceStartMinute, UNLIMITED, type DayAvailability }
 import { addDays, diffDays, longDate, minuteLabel, shortDate, type Ymd } from "@/lib/dates";
 import type { Service } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { MonthGrid } from "./month-grid";
+import { MonthGrid, NothingOpen } from "./month-grid";
 
 function nightsLabel(n: number) {
   return `${n} night${n === 1 ? "" : "s"}`;
@@ -121,7 +121,7 @@ export function StayPicker({
             : !checkIn
               ? days.some((d) => d.remaining > 0)
                 ? "Tap your check-in date."
-                : "No open nights right now — send us a message!"
+                : <NothingOpen what="nights" />
               : !end
                 ? `Now tap check-out. Stays are ${
                     service.min_nights === service.max_nights ? nightsLabel(service.min_nights) : `${service.min_nights}–${service.max_nights} nights`
@@ -209,7 +209,7 @@ export function DaysPicker({
       <div className="space-y-3">
         <p className="rounded-2xl bg-sea-50 p-4 text-sm font-bold">
           Drop-off from {minuteLabel(serviceStartMinute(service))}, pick-up by {minuteLabel(serviceEndMinute(service))}.
-          <span className="block font-semibold text-ink-600">Tap as many days as you like.</span>
+          <span className="block font-semibold text-ink-600">{max <= 2 ? "Tap the new day." : "Tap as many days as you like."}</span>
         </p>
         {sorted.length ? (
           <ul className="flex flex-wrap gap-1.5">
@@ -218,7 +218,7 @@ export function DaysPicker({
                 <button
                   type="button"
                   onClick={() => onChange(selected.filter((x) => x !== d))}
-                  className="rounded-full bg-ink px-3 py-1 text-sm font-bold text-white hover:bg-ink-600"
+                  className="min-h-10 rounded-full bg-ink px-3.5 text-sm font-bold text-white hover:bg-ink-600"
                   aria-label={`Remove ${longDate(d)}`}
                 >
                   {shortDate(d)} ×
@@ -228,7 +228,7 @@ export function DaysPicker({
           </ul>
         ) : (
           <p className="text-sm font-bold text-ink-600">
-            {loading ? "Checking availability…" : days.some((d) => d.remaining > 0) ? "No days picked yet." : "No open days right now — send us a message!"}
+            {loading ? "Checking availability…" : days.some((d) => d.remaining > 0) ? "No days picked yet." : <NothingOpen what="days" />}
           </p>
         )}
       </div>
@@ -333,7 +333,7 @@ export function TimeSlotPicker({
         ) : (
           <div className="grid h-full min-h-40 place-items-center rounded-2xl border-2 border-dashed border-sea-200 bg-sea-50/50 p-6 text-center">
             <p className="font-bold text-ink-600">
-              {loading ? "Checking availability…" : openDays.size ? "Pick a day to see times" : "No open times right now — send us a message!"}
+              {loading ? "Checking availability…" : openDays.size ? "Pick a day to see times" : <NothingOpen what="times" />}
             </p>
           </div>
         )}

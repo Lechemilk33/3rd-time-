@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { addService, bookVisits, getAvailability, getServiceDays, type BookResult } from "@/app/portal/booking-actions";
 import { PetAvatar } from "@/components/calendar/event-bits";
 import { DynamicFormFields } from "@/components/forms/dynamic-form-fields";
@@ -43,6 +43,7 @@ import { addDays, diffDays, isoWeekday, longDate, minuteLabel, shortDate, startO
 import { formatMoney } from "@/lib/format";
 import { bookingQuestions, fieldsForService, unansweredForService } from "@/lib/intake";
 import type { ActionResult, FormAnswers, FormField, Service } from "@/lib/types";
+import { useFormAction } from "@/lib/use-form-action";
 import { cn } from "@/lib/utils";
 import { DateWindowPicker } from "./date-window-picker";
 import { DaysPicker, StayPicker, TimeSlotPicker } from "./day-pickers";
@@ -254,6 +255,27 @@ export function BookingWizard({
     );
   }
 
+  // Why "Book it" is greyed out, in plain words.
+  const hint = !service
+    ? "Pick a service to start."
+    : needsQuestions
+      ? "Answer a few quick questions first."
+      : !petIds.length
+        ? pets.length
+          ? "Pick your pup."
+          : "Add your pup first."
+        : petIds.length > service.max_pets
+          ? `Pick up to ${plural(service.max_pets, "pup")}.`
+          : !picked
+            ? kind === "stay"
+              ? "Pick your check-in and check-out days."
+              : kind === "day"
+                ? "Pick at least one day."
+                : "Pick a day and time."
+            : !dates.length
+              ? "None of those dates are open — try other days."
+              : null;
+
   let n = 1;
   const total = service ? estimateTotal(service, { nights, days: dates.length, visits: dates.length }) : null;
   const whenTitle = kind === "stay" ? "Pick your dates" : kind === "day" ? "Pick your days" : kind === "time" ? "Pick a day and time" : "Pick a day and time";
@@ -265,7 +287,8 @@ export function BookingWizard({
         <Step n={n++} title="What do you need?" done={Boolean(service)} summary={service?.name} onEdit={() => pickService(null)}>
           {!approved ? (
             <Notice tone="info" className="mb-4" title="New here? Start with a meet & greet.">
-              We’ll come say hi, meet your pup and learn the routine. Everything else unlocks right after.
+              We’ll come say hi, meet your pup and learn the routine. Once we’ve met, we’ll approve your account and
+              email you — then everything else unlocks.
             </Notice>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -356,7 +379,7 @@ export function BookingWizard({
                 <PawPrint className="mx-auto size-8 text-sea-300" aria-hidden />
                 <p className="mt-2 font-bold">Add your pup first</p>
                 <p className="text-sm text-ink-600">So we know who we’re caring for!</p>
-                <ButtonLink href="/portal/pets/new" size="sm" className="mt-3">
+                <ButtonLink href={`/portal/pets/new?next=${encodeURIComponent(`/portal/book?service=${service.id}`)}`} size="sm" className="mt-3">
                   Add a pup
                 </ButtonLink>
               </div>
@@ -484,7 +507,9 @@ export function BookingWizard({
                         })}
                       </ul>
                       <p className="text-sm text-ink-600">
-                        {kind === "time"
+                        {dates.length === 0
+                          ? "None of these dates are open — try other days or fewer weeks."
+                          : kind === "time"
                           ? "If that time is taken on a date, we’ll skip it and let you know."
                           : dates.length < repeated.length
                             ? "Crossed-out dates are full or unavailable and will be skipped."
@@ -557,8 +582,9 @@ export function BookingWizard({
                   ? `Book ${dates.length} ${kind === "day" ? "days" : "visits"}`
                   : "Book it"}
           </Button>
+          {!ready && hint ? <p className="-mt-1 text-center text-sm font-bold text-ink-600">{hint}</p> : null}
           <p className="text-center text-xs text-ink-400">
-            Free to cancel up to {settings.cancel_cutoff_hours} hours before. Payment is handled after your visit.
+            Free to cancel up to {settings.cancel_cutoff_hours} hours before. Nothing to pay today.
           </p>
         </Card>
       </aside>
@@ -641,7 +667,7 @@ function Step({
           <p className="truncate font-extrabold">{summary}</p>
         </div>
         {onEdit ? (
-          <button type="button" onClick={onEdit} className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold text-ocean hover:bg-sea-50">
+          <button type="button" onClick={onEdit} className="inline-flex min-h-10 items-center gap-1 rounded-full px-3 text-sm font-bold text-ocean hover:bg-sea-50">
             <Pencil className="size-3.5" aria-hidden /> Change
           </button>
         ) : null}
@@ -679,20 +705,22 @@ function ServiceQuestions({
   answers: FormAnswers;
   onDone: () => void;
 }) {
-  const [state, action] = useActionState(async (prev: ActionResult | null, formData: FormData) => {
+  const [state, onSubmit, pending] = useFormAction(async (prev: ActionResult | null, formData: FormData) => {
     const res = await addService(service.id, prev, formData);
     if (res.ok) onDone();
     return res;
-  }, null);
+  });
   return (
-    <form action={action} className="space-y-5">
+    <form onSubmit={onSubmit} className="space-y-5">
       <p className="flex items-start gap-2 text-ink-600">
         <ClipboardList className="mt-0.5 size-5 shrink-0 text-ocean" aria-hidden />
         These help us take great care of your pup. We’ll save them to your intake form so you only answer once.
       </p>
       <DynamicFormFields fields={fields} answers={answers} />
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
-      <SubmitButton pendingText="Saving…">Save &amp; continue</SubmitButton>
+      <SubmitButton pendingText="Saving…" pending={pending}>
+        Save &amp; continue
+      </SubmitButton>
     </form>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { CalendarPlus, CircleCheck } from "lucide-react";
-import { useActionState } from "react";
 import { addService } from "@/app/portal/booking-actions";
 import { DynamicFormFields } from "@/components/forms/dynamic-form-fields";
 import { ButtonLink } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { FormAnswers, FormField } from "@/lib/types";
+import { useFormAction } from "@/lib/use-form-action";
 
 export function AddServiceForm({
   service,
@@ -23,7 +23,7 @@ export function AddServiceForm({
   already: boolean;
   canBook: boolean;
 }) {
-  const [state, action] = useActionState(addService.bind(null, service.id), null);
+  const [state, onSubmit, pending] = useFormAction(addService.bind(null, service.id));
   const questions = fields.filter((f) => f.type !== "heading").length;
 
   if (state?.ok) {
@@ -34,7 +34,7 @@ export function AddServiceForm({
         <p className="mt-1 text-ink-600">We’ve saved your answers to your intake form.</p>
         <div className="mt-5 flex flex-wrap justify-center gap-3">
           {canBook ? (
-            <ButtonLink href={`/portal/book?service=${service.id}`}>
+            <ButtonLink href={`/portal/book?service=${service.id}`} className="h-auto min-h-11 py-2 whitespace-normal">
               <CalendarPlus className="size-4" aria-hidden /> Book {service.name}
             </ButtonLink>
           ) : null}
@@ -47,7 +47,7 @@ export function AddServiceForm({
   }
 
   return (
-    <form action={action} className="max-w-3xl space-y-6">
+    <form onSubmit={onSubmit} className="max-w-3xl space-y-6">
       {service.description ? <p className="text-lg text-ink-600">{service.description}</p> : null}
       {questions ? (
         <Card>
@@ -61,7 +61,7 @@ export function AddServiceForm({
         <Notice tone="info">No extra questions for this one — just add it to your services.</Notice>
       )}
       {state?.error ? <Notice tone="error">{state.error}</Notice> : null}
-      <SubmitButton size="lg" pendingText="Saving…">
+      <SubmitButton size="lg" pendingText="Saving…" pending={pending} className="h-auto min-h-13 py-3 whitespace-normal">
         {already ? "Save answers" : `Add ${service.name}`}
       </SubmitButton>
     </form>

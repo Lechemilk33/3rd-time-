@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { addDays, addMonths, daysBetween, formatYmd, longDate, startOfMonth, startOfWeek, type Ymd } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,18 @@ export function MonthGrid({
   legend?: ReactNode;
 }) {
   const [month, setMonth] = useState<Ymd>(startOfMonth(initialMonth));
+  // Pickers mount before availability loads, so jump to the first open month once it arrives —
+  // unless the person has already started paging.
+  const [paged, setPaged] = useState(false);
+  const [wasLoading, setWasLoading] = useState(loading);
+  if (wasLoading !== loading) {
+    setWasLoading(loading);
+    if (!loading && !paged) setMonth(startOfMonth(initialMonth));
+  }
+  const page = (delta: number) => {
+    setPaged(true);
+    setMonth(addMonths(month, delta));
+  };
   const from = startOfWeek(month);
   const days = daysBetween(from, addDays(from, 41));
   const canPrev = month > startOfMonth(today);
@@ -54,8 +67,8 @@ export function MonthGrid({
         <button
           type="button"
           disabled={!canPrev}
-          onClick={() => setMonth(addMonths(month, -1))}
-          className="grid size-9 place-items-center rounded-full hover:bg-sea-50 disabled:opacity-30"
+          onClick={() => page(-1)}
+          className="grid size-10 place-items-center rounded-full hover:bg-sea-50 disabled:opacity-30"
           aria-label="Previous month"
         >
           <ChevronLeft className="size-5" />
@@ -64,8 +77,8 @@ export function MonthGrid({
         <button
           type="button"
           disabled={!canNext}
-          onClick={() => setMonth(addMonths(month, 1))}
-          className="grid size-9 place-items-center rounded-full hover:bg-sea-50 disabled:opacity-30"
+          onClick={() => page(1)}
+          className="grid size-10 place-items-center rounded-full hover:bg-sea-50 disabled:opacity-30"
           aria-label="Next month"
         >
           <ChevronRight className="size-5" />
@@ -134,5 +147,18 @@ export function MonthGrid({
         {legend}
       </div>
     </div>
+  );
+}
+
+/** "No open … right now" with a way to reach us instead of a dead end. */
+export function NothingOpen({ what }: { what: string }) {
+  return (
+    <>
+      No open {what} right now —{" "}
+      <Link href="/contact" className="text-ocean underline underline-offset-2">
+        send us a message
+      </Link>
+      !
+    </>
   );
 }

@@ -11,6 +11,8 @@ export function Popover({
   className,
   open: controlledOpen,
   onOpenChange,
+  sheetOnMobile,
+  defaultOpen = false,
 }: {
   trigger: (props: { open: boolean; toggle: () => void }) => ReactNode;
   children: ReactNode | ((close: () => void) => ReactNode);
@@ -18,8 +20,11 @@ export function Popover({
   className?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** On phones, show as a sheet pinned to the bottom of the screen instead of hanging off the trigger. */
+  sheetOnMobile?: boolean;
+  defaultOpen?: boolean;
 }) {
-  const [uncontrolled, setUncontrolled] = useState(false);
+  const [uncontrolled, setUncontrolled] = useState(defaultOpen);
   const open = controlledOpen ?? uncontrolled;
   const ref = useRef<HTMLDivElement>(null);
 
@@ -52,6 +57,7 @@ export function Popover({
             "absolute top-full z-50 mt-2 rounded-2xl border border-ink-100 bg-white p-3 shadow-[0_20px_50px_-12px_rgba(15,43,63,0.35)] motion-safe:animate-[pop_120ms_ease-out]",
             align === "end" ? "right-0" : "left-0",
             className,
+            sheetOnMobile && "max-sm:fixed max-sm:inset-x-4 max-sm:top-auto max-sm:bottom-4 max-sm:mt-0 max-sm:w-auto max-sm:max-w-none",
           )}
         >
           {typeof children === "function" ? children(close) : children}

@@ -6,8 +6,8 @@ import { ButtonLink } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
 import type { Profile, SubmissionStatus } from "@/lib/types";
 
-export default async function ClientsPage() {
-  const { supabase } = await adminData();
+export default async function ClientsPage({ searchParams }: PageProps<"/admin/clients">) {
+  const [{ supabase }, sp] = await Promise.all([adminData(), searchParams]);
   const [profilesRes, petsRes, intakeRes] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("pets").select("owner_id, name, breed"),
@@ -45,7 +45,7 @@ export default async function ClientsPage() {
           When people sign up from your website they’ll show up here.
         </EmptyState>
       ) : (
-        <ClientsTable rows={rows} />
+        <ClientsTable rows={rows} initialFilter={sp.filter === "review" ? "review" : "all"} />
       )}
     </>
   );

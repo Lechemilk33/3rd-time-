@@ -18,7 +18,7 @@ export async function Footer() {
       <svg
         viewBox="0 0 1440 48"
         preserveAspectRatio="none"
-        className="absolute -top-px left-0 h-6 w-full -translate-y-full text-ink sm:h-10"
+        className="absolute top-px left-0 h-6 w-full -translate-y-full text-ink sm:h-10"
         aria-hidden
       >
         <path d="M0 48h1440V20c-120 18-240 26-360 18S840 4 720 6 480 34 360 36 120 22 0 12z" fill="currentColor" />

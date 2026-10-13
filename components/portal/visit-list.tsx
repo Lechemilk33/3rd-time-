@@ -1,7 +1,8 @@
 "use client";
 
-import { CalendarClock, CalendarPlus, MessageSquareText, Repeat, X } from "lucide-react";
-import { useState, useTransition } from "react";
+import { CalendarClock, CalendarPlus, CircleCheck, MessageSquareText, Repeat, X } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { cancelVisit, getAvailability, getServiceDays, rescheduleVisit } from "@/app/portal/booking-actions";
 import { DateWindowPicker } from "@/components/booking/date-window-picker";
 import { DaysPicker, StayPicker, TimeSlotPicker } from "@/components/booking/day-pickers";
@@ -23,7 +24,6 @@ import {
   type DayAvailability,
 } from "@/lib/booking";
 import { addDays, diffDays, formatYmd, longDate, timeToMinutes, zonedToDate, type Ymd } from "@/lib/dates";
-import type { ActionResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type WalkerInfo = { display_name: string; color: string };
@@ -38,6 +38,7 @@ export function VisitList({
   today,
   now,
   past,
+  empty,
 }: {
   visits: BookingDetail[];
   windows: BookingWindow[];
@@ -49,18 +50,34 @@ export function VisitList({
   /** Server time (ms) so cutoffs render the same on server and client. */
   now: number;
   past?: boolean;
+  /** Shown when the list is empty — kept in here so the toast survives canceling the last one. */
+  empty?: ReactNode;
 }) {
   const windowMap = new Map(windows.map((w) => [w.id, w]));
-  const [message, setMessage] = useState<ActionResult | null>(null);
-  if (!visits.length) return null;
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   return (
-    <div className="space-y-3">
-      {message ? (
-        <Notice tone={message.ok ? "success" : "error"}>{message.ok ? message.message : message.error}</Notice>
+    <>
+      {toast ? (
+        <div
+          role="status"
+          className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-ink px-4 py-3 font-bold text-white shadow-xl motion-safe:animate-[rise_200ms_ease-out]"
+        >
+          <CircleCheck className="size-5 shrink-0 text-emerald-300" aria-hidden />
+          <span className="flex-1">{toast}</span>
+          <button type="button" onClick={() => setToast(null)} className="grid size-8 place-items-center rounded-full hover:bg-white/10" aria-label="Dismiss">
+            <X className="size-4" aria-hidden />
+          </button>
+        </div>
       ) : null}
-      <ul className="space-y-3">
-        {visits.map((v) => (
+      {visits.length ? (
+        <ul className="space-y-3">
+          {visits.map((v) => (
           <VisitCard
             key={v.id}
             visit={v}
@@ -72,11 +89,14 @@ export function VisitList({
             today={today}
             now={now}
             past={past}
-            onResult={setMessage}
+            onDone={setToast}
           />
-        ))}
-      </ul>
-    </div>
+          ))}
+        </ul>
+      ) : (
+        empty
+      )}
+    </>
   );
 }
 
@@ -90,7 +110,7 @@ function VisitCard({
   today,
   now,
   past,
-  onResult,
+  onDone,
 }: {
   visit: BookingDetail;
   windowMap: Map<string, BookingWindow>;
@@ -101,9 +121,10 @@ function VisitCard({
   today: Ymd;
   now: number;
   past?: boolean;
-  onResult: (r: ActionResult) => void;
+  onDone: (message: string) => void;
 }) {
   const [panel, setPanel] = useState<null | "cancel" | "move">(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<"one" | "following">("one");
@@ -117,6 +138,14 @@ function VisitCard({
   const kind = v.kind ?? "window";
   const nights = kind === "stay" ? diffDays(v.end_date, v.service_date) : 0;
   const noun = kind === "stay" ? "stay" : kind === "day" ? "day" : "visit";
+  const Noun = noun[0].toUpperCase() + noun.slice(1);
+
+  function toggle(next: "cancel" | "move") {
+    setError(null);
+    if (panel === next) setPanel(null);
+    else if (next === "move") openMove();
+    else setPanel(next);
+  }
 
   const active = v.status === "scheduled" || v.status === "requested";
   const locked = new Date(v.start_time).getTime() - now < cutoffHours * 3_600_000;
@@ -217,7 +246,7 @@ function VisitCard({
             <p className="mt-3 flex items-start gap-2 rounded-2xl bg-sea-50 p-3 text-sm">
               <MessageSquareText className="mt-0.5 size-4 shrink-0 text-ocean" aria-hidden />
               <span>
-                <span className="font-bold">From your walker:</span> {v.notes}
+                <span className="font-bold">A note from us:</span> {v.notes}
               </span>
             </p>
           ) : null}
@@ -229,14 +258,18 @@ function VisitCard({
         <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 bg-sand/40 px-4 py-3 sm:px-5">
           {locked ? (
             <p className="text-sm font-semibold text-ink-600">
-              Less than {cutoffHours} hours away — message us to make changes.
+              Less than {cutoffHours} hours away —{" "}
+              <Link href="/contact" className="font-bold text-ocean hover:underline">
+                message us
+              </Link>{" "}
+              to make changes.
             </p>
           ) : (
             <>
-              <Button size="sm" variant="outline" onClick={() => (panel === "move" ? setPanel(null) : openMove())}>
+              <Button size="sm" variant="outline" onClick={() => toggle("move")}>
                 <CalendarClock className="size-4" aria-hidden /> Reschedule
               </Button>
-              <Button size="sm" variant="ghost" className="text-red-700 hover:bg-red-50" onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>
+              <Button size="sm" variant="ghost" className="text-red-700 hover:bg-red-50" onClick={() => toggle("cancel")}>
                 <X className="size-4" aria-hidden /> Cancel
               </Button>
             </>
@@ -261,6 +294,7 @@ function VisitCard({
             </div>
           ) : null}
           <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Want to tell us why? (optional)" aria-label="Reason" />
+          {error ? <Notice tone="error">{error}</Notice> : null}
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -269,8 +303,9 @@ function VisitCard({
               onClick={() =>
                 start(async () => {
                   const r = await cancelVisit(v.id, scope, reason);
-                  onResult(r);
-                  if (r.ok) setPanel(null);
+                  if (!r.ok) return setError(r.error ?? "Couldn’t cancel — please try again.");
+                  setPanel(null);
+                  onDone(scope === "following" ? (r.message ?? "Canceled.") : `${Noun} canceled. We’ve let the team know.`);
                 })
               }
             >
@@ -341,8 +376,14 @@ function VisitCard({
               }}
             />
           ) : (
-            <p className="text-ink-600">Message us and we’ll move this one for you.</p>
+            <p className="text-ink-600">
+              <Link href="/contact" className="font-bold text-ocean hover:underline">
+                Message us
+              </Link>{" "}
+              and we’ll move this one for you.
+            </p>
           )}
+          {error ? <Notice tone="error">{error}</Notice> : null}
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -351,8 +392,10 @@ function VisitCard({
               onClick={() =>
                 start(async () => {
                   const r = await rescheduleVisit(v.id, { date: date!, windowId, arrivalMinute: minute, endDate: checkOut });
-                  onResult(r);
-                  if (r.ok) setPanel(null);
+                  if (!r.ok) return setError(r.error ?? "Couldn’t move it — please try again.");
+                  setPanel(null);
+                  const what = kind === "stay" ? "dates" : kind === "day" ? "day" : "time";
+                  onDone(service?.confirmation === "request" ? `Sent! We’ll confirm the new ${what} by email.` : `Done! You’ll get an email with the new ${what}.`);
                 })
               }
             >

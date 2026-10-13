@@ -15,6 +15,7 @@ export function ImageUpload({
   label = "Upload photo",
   className,
   aspect = "aspect-[4/3]",
+  onBusyChange,
 }: {
   value: string;
   onChange: (url: string) => void;
@@ -24,6 +25,8 @@ export function ImageUpload({
   label?: string;
   className?: string;
   aspect?: string;
+  /** Lets a parent form hold its submit while the upload is still running. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -33,6 +36,7 @@ export function ImageUpload({
     if (!file) return;
     setError(null);
     setBusy(true);
+    onBusyChange?.(true);
     try {
       const { url } = await uploadImage(file, folder);
       onChange(url);
@@ -40,6 +44,7 @@ export function ImageUpload({
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
       if (inputRef.current) inputRef.current.value = "";
     }
   }

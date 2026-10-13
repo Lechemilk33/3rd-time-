@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { windowRange, type Availability, type BookingWindow } from "@/lib/booking";
 import { longDate, type Ymd } from "@/lib/dates";
 import { cn } from "@/lib/utils";
-import { MonthGrid } from "./month-grid";
+import { MonthGrid, NothingOpen } from "./month-grid";
 
 /**
  * Month calendar with open days marked, then the arrival windows for the picked day.
@@ -121,7 +121,7 @@ export function DateWindowPicker({
         ) : (
           <div className="grid h-full min-h-40 place-items-center rounded-2xl border-2 border-dashed border-sea-200 bg-sea-50/50 p-6 text-center">
             <p className="font-bold text-ink-600">
-              {loading ? "Checking availability…" : firstOpen ? "Pick a day to see times" : "No open times right now — send us a message!"}
+              {loading ? "Checking availability…" : firstOpen ? "Pick a day to see times" : <NothingOpen what="times" />}
             </p>
           </div>
         )}

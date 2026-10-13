@@ -22,7 +22,10 @@ export default async function IntegrationsPage() {
 
   return (
     <>
-      <PageTitle title="Integrations" description="Booking, payments and the connections behind them." />
+      <PageTitle
+        title="Integrations"
+        description="Booking, payments and the connections behind them. The setup steps below are one-time technical tasks — if someone built the site for you, send them this page."
+      />
       <div className="space-y-6">
         <Card>
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -49,27 +52,35 @@ export default async function IntegrationsPage() {
             <Status ok={stripe}>{stripe ? (isStripeTestMode() ? "Connected (test mode)" : "Connected (live)") : "Not connected"}</Status>
             <Status ok={stripeWebhook}>{stripeWebhook ? "Payment sync on" : "Sync off"}</Status>
           </div>
-          <ol className="list-decimal space-y-2 pl-5 text-ink">
-            <li>
-              Add your Stripe secret key as <code className="rounded bg-sea-50 px-1">STRIPE_SECRET_KEY</code> in Vercel
-              (start with a test key that begins with <code>sk_test_</code>).
-            </li>
-            <li>
-              In Stripe → Developers → Webhooks, add an endpoint for{" "}
-              <code className="rounded bg-sea-50 px-1">checkout.session.completed</code> using the URL below, then save
-              its signing secret as <code className="rounded bg-sea-50 px-1">STRIPE_WEBHOOK_SECRET</code>.
-            </li>
-            <li>
-              Turn on “Clients can pay online” for any service in{" "}
-              <Link href="/admin/services" className="font-bold text-ocean underline">
-                Services
-              </Link>
-              .
-            </li>
-          </ol>
-          <div className="mt-4 max-w-xl">
-            <CopyField label="Stripe webhook URL" value={`${origin}/api/webhooks/stripe`} />
-          </div>
+          <p className="text-ink">
+            {stripe
+              ? "Clients can pay online for any service where you’ve turned it on."
+              : "Not set up yet — clients pay you the way they do today. Online payments are optional."}
+          </p>
+          <details className="mt-3" open={!stripe}>
+            <summary className="cursor-pointer text-sm font-bold text-ocean">Setup steps (for whoever manages the website)</summary>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-ink">
+              <li>
+                Add your Stripe secret key as <code className="rounded bg-sea-50 px-1">STRIPE_SECRET_KEY</code> in Vercel
+                (start with a test key that begins with <code>sk_test_</code>).
+              </li>
+              <li>
+                In Stripe → Developers → Webhooks, add an endpoint for{" "}
+                <code className="rounded bg-sea-50 px-1">checkout.session.completed</code> using the URL below, then save
+                its signing secret as <code className="rounded bg-sea-50 px-1">STRIPE_WEBHOOK_SECRET</code>.
+              </li>
+              <li>
+                Turn on “Clients can pay online” for any service in{" "}
+                <Link href="/admin/services" className="font-bold text-ocean underline">
+                  Services
+                </Link>
+                .
+              </li>
+            </ol>
+            <div className="mt-4 max-w-xl">
+              <CopyField label="Stripe webhook URL" value={`${origin}/api/webhooks/stripe`} />
+            </div>
+          </details>
         </Card>
 
         <Card>
@@ -79,6 +90,9 @@ export default async function IntegrationsPage() {
             <Status ok={serviceRole}>{serviceRole ? "Secret key set" : "Secret key missing"}</Status>
           </div>
           <p className="text-ink">
+            {serviceRole ? "Everything’s connected — nothing to do here." : "One technical step is missing (for whoever manages the website):"}
+          </p>
+          <p className="mt-2 text-sm text-ink-600">
             The Stripe webhook and automatic admin access for the emails in{" "}
             <code className="rounded bg-sea-50 px-1">ADMIN_EMAILS</code> need the Supabase secret key saved as{" "}
             <code className="rounded bg-sea-50 px-1">SUPABASE_SECRET_KEY</code> in Vercel.

@@ -297,7 +297,7 @@ export const DEFAULT_PAGES: DefaultPage[] = [
         data: {
           eyebrow: "",
           heading: "Our story",
-          body: "Tell your story here — how Waiting for Paws got started, who’s holding the leash, and what makes OB such a great place to be a dog.\n\nYou can change this text, add a photo, and move this block around from the admin portal.",
+          body: "We’re Ocean Beach locals who love dogs, and we care for every pup like our own.\n\nWhether it’s a midday stroll, a drop-in visit or a sleepover, your pup gets a familiar face, plenty of patience and lots of praise — and you get a quick update afterward.",
           image: "",
           imageSide: "left",
           buttonLabel: "",

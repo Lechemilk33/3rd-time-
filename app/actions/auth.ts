@@ -61,6 +61,7 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
   const phone = formString(formData, "phone");
   const email = formString(formData, "email");
   const password = formString(formData, "password");
+  const next = safeNextPath(formString(formData, "next"));
 
   if (!fullName || !email || !password) return { ok: false, error: "Please fill in your name, email, and a password." };
   if (password.length < 8) return { ok: false, error: "Please choose a password with at least 8 characters." };
@@ -71,12 +72,12 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
     password,
     options: {
       data: { full_name: fullName, phone },
-      emailRedirectTo: `${await getOrigin()}/auth/callback?next=/portal`,
+      emailRedirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
     },
   });
   if (error) return { ok: false, error: friendlyAuthError(error.message) };
 
-  if (data.session) redirect("/portal");
+  if (data.session) redirect(next);
   return {
     ok: true,
     message: `Almost there! We sent a confirmation link to ${email}. Click it to finish setting up your account.`,
